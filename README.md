@@ -1,1 +1,1 @@
-# carousel-generator
+# insta-carousel-generator
