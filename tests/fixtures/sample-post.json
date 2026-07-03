@@ -1,0 +1,60 @@
+{
+  "idea_id": "idea_fixture_0001",
+  "idea": "How to price your freelance projects without underselling",
+  "hook": "Stop guessing your rates — price on value, not hours",
+  "content_pillar": "Pricing & positioning",
+  "template": "numbered-list",
+  "slides": [
+    {
+      "type": "cover",
+      "kicker": "Freelance pricing",
+      "headline": "Price on value, not on hours",
+      "body": "Five shifts that raise your rates without scaring clients away."
+    },
+    {
+      "type": "numbered-point",
+      "index": 1,
+      "headline": "Anchor to outcomes",
+      "body": "Lead with the result you deliver — revenue, time saved, risk removed — before you ever mention a number."
+    },
+    {
+      "type": "numbered-point",
+      "index": 2,
+      "headline": "Quote a range, then narrow",
+      "body": "Open with a range tied to scope. It frames the conversation and filters out mismatched budgets early."
+    },
+    {
+      "type": "numbered-point",
+      "index": 3,
+      "headline": "Charge for the decision, not the deliverable",
+      "body": "A logo is cheap. The judgment behind it is not. Price the expertise clients cannot easily replace."
+    },
+    {
+      "type": "numbered-point",
+      "index": 4,
+      "headline": "Add a premium tier on purpose",
+      "body": "A higher option makes your middle package feel like the sensible choice — and some clients pick the top."
+    },
+    {
+      "type": "checklist",
+      "headline": "Before you send the quote",
+      "items": [
+        "You named a concrete outcome",
+        "You tied price to scope, not hours",
+        "You offered two or three clear tiers",
+        "You removed one point of friction"
+      ]
+    },
+    {
+      "type": "cta",
+      "headline": "Raise your rate on the next one",
+      "body": "Pick one shift and apply it to your very next proposal.",
+      "kicker": "Save this for your next quote"
+    }
+  ],
+  "caption": "Most freelancers underprice because they sell hours instead of outcomes.\n\nThese five shifts reframe the conversation around the value you create — so your rate reflects the result, not the clock.\n\nWhich one will you try on your next proposal?",
+  "hashtags": ["freelancing", "freelancetips", "pricingstrategy", "solopreneur", "consulting"],
+  "sources": [],
+  "generated_at": "2026-07-03T00:00:00.000Z",
+  "idempotency_key": "idea_fixture_0001:pending"
+}

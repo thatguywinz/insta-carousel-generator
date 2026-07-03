@@ -1,0 +1,48 @@
+{
+  "name": "insta-carousel-generator",
+  "version": "1.0.0",
+  "description": "Autonomous Instagram carousel content-generation and publishing system",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "healthcheck": "tsx src/cli.ts healthcheck",
+    "workflow": "tsx src/cli.ts workflow",
+    "workflow:test": "MODE_OVERRIDE=TEST tsx src/cli.ts workflow",
+    "workflow:live": "tsx src/cli.ts workflow",
+    "select-idea": "tsx src/cli.ts select-idea",
+    "render:fixture": "tsx src/cli.ts render-fixture",
+    "recover": "tsx src/cli.ts recover",
+    "verify:publication": "tsx src/cli.ts verify-publication"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.658.1",
+    "googleapis": "^144.0.0",
+    "luxon": "^3.5.0",
+    "playwright": "^1.48.0",
+    "sanitize-html": "^2.13.1",
+    "sharp": "^0.33.5",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.4.2",
+    "@types/node": "^22.7.4",
+    "@types/sanitize-html": "^2.13.0",
+    "@typescript-eslint/eslint-plugin": "^8.8.0",
+    "@typescript-eslint/parser": "^8.8.0",
+    "eslint": "^9.11.1",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.2"
+  }
+}

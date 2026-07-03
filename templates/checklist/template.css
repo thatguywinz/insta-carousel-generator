@@ -1,0 +1,18 @@
+/* checklist — clean scannable checklist with ticks */
+.slide-cover .headline { font-size: 90px; }
+.slide-cover .swipe { margin-top: 18px; font-size: 32px; font-weight: 700; color: var(--c-accent); }
+.slide::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 16px; height: 100%;
+  background: linear-gradient(180deg, var(--c-secondary), var(--c-accent));
+}
+.checklist .headline.small { font-size: 60px; margin-bottom: 34px; }
+.checks { list-style: none; display: flex; flex-direction: column; gap: 26px; }
+.checks li { display: flex; gap: 24px; font-size: 38px; line-height: 1.32; align-items: flex-start;
+  background: var(--c-surface); border: 2px solid #E4E7EE; border-radius: 18px; padding: 26px 30px; }
+.check { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto;
+  width: 46px; height: 46px; border-radius: 12px; background: var(--c-secondary);
+  color: var(--c-on-primary); font-size: 28px; font-weight: 900; }
+.numbered .row { display: flex; align-items: center; gap: 30px; margin-bottom: 20px; }
+.numbered .badge { background: var(--c-secondary); }
+.cta-pill { align-self: flex-start; margin-top: 20px; padding: 22px 40px; border-radius: 18px;
+  background: var(--c-primary); color: var(--c-on-primary); font-size: 38px; font-weight: 800; }

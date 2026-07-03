@@ -1,0 +1,18 @@
+/* myth-reality — contrasting paired cards */
+.slide-cover .headline { font-size: 90px; }
+.slide-cover .swipe { margin-top: 18px; font-size: 32px; font-weight: 700; color: var(--c-secondary); }
+.myth, .mistake { gap: 30px; }
+.pair { border-radius: 26px; padding: 40px 44px; }
+.pair .tag { display: inline-block; font-size: 26px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; margin-bottom: 16px; }
+.pair .body { font-size: 36px; line-height: 1.36; color: #1F2937; }
+.myth-box, .mistake-box { background: #FBEDEC; border-left: 12px solid #D64545; }
+.myth-box .tag, .mistake-box .tag { color: #C23838; }
+.reality-box, .solution-box { background: #E9F3EC; border-left: 12px solid #2E9E5B; }
+.reality-box .tag, .solution-box .tag { color: #24824A; }
+.headline.small { font-size: 58px; margin-bottom: 6px; }
+.checks { list-style: none; display: flex; flex-direction: column; gap: 20px; }
+.checks li { display: flex; gap: 18px; font-size: 34px; }
+.check { color: #2E9E5B; font-weight: 800; }
+.cta-pill { align-self: flex-start; margin-top: 20px; padding: 22px 40px; border-radius: 18px;
+  background: var(--c-primary); color: var(--c-on-primary); font-size: 38px; font-weight: 800; }

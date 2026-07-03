@@ -1,0 +1,20 @@
+{
+  "brandName": "Your Brand",
+  "instagramHandle": "@yourbrand",
+  "colors": {
+    "primary": "#1A2B4A",
+    "secondary": "#3B6FE0",
+    "accent": "#F2B705",
+    "background": "#FBFAF7",
+    "surface": "#FFFFFF",
+    "text": "#141B2E",
+    "textMuted": "#5A6478",
+    "onPrimary": "#FFFFFF"
+  },
+  "style": "clean-editorial",
+  "fonts": {
+    "heading": "Inter, 'Helvetica Neue', Arial, sans-serif",
+    "body": "Inter, 'Helvetica Neue', Arial, sans-serif"
+  },
+  "language": "en"
+}

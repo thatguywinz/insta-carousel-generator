@@ -1,0 +1,15 @@
+SYSTEM_READY
+
+This marker indicates the insta-carousel-generator is fully bootstrapped and
+operational. Its presence puts every future run into NORMAL MODE — operate the
+existing application, do not rebuild it. See CLAUDE.md for operating instructions.
+
+Bootstrap completed:
+- Full TypeScript (strict) application, tests, and six branded templates.
+- format / lint / typecheck / build / 90 tests all pass.
+- Google Sheets health check: PASS.
+- Cloudflare R2 health check (public + private): PASS.
+- Instagram credential validation: tolerated-missing (first run was TEST mode).
+- First TEST draft generated end-to-end and marked DRAFT_READY.
+
+Do not delete this file. Do not recreate it merely because files were generated.

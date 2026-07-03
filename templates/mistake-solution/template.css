@@ -1,0 +1,18 @@
+/* mistake-solution — problem/fix paired cards with arrow motif */
+.slide-cover .headline { font-size: 90px; }
+.slide-cover .swipe { margin-top: 18px; font-size: 32px; font-weight: 700; color: var(--c-accent); }
+.mistake, .myth { gap: 28px; }
+.pair { position: relative; border-radius: 24px; padding: 38px 44px; }
+.pair .tag { display: inline-block; font-size: 26px; font-weight: 800; letter-spacing: 2px;
+  text-transform: uppercase; margin-bottom: 14px; }
+.pair .body { font-size: 36px; line-height: 1.36; color: #1F2937; }
+.mistake-box, .myth-box { background: #FBECE8; border: 3px solid #E08A5B; }
+.mistake-box .tag, .myth-box .tag { color: #C25E28; }
+.solution-box, .reality-box { background: #E7F1FB; border: 3px solid var(--c-secondary); }
+.solution-box .tag, .reality-box .tag { color: var(--c-secondary); }
+.headline.small { font-size: 58px; }
+.checks { list-style: none; display: flex; flex-direction: column; gap: 20px; }
+.checks li { display: flex; gap: 18px; font-size: 34px; }
+.check { color: var(--c-secondary); font-weight: 800; }
+.cta-pill { align-self: flex-start; margin-top: 20px; padding: 22px 40px; border-radius: 18px;
+  background: var(--c-secondary); color: var(--c-on-primary); font-size: 38px; font-weight: 800; }

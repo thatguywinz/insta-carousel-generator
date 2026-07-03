@@ -1,0 +1,19 @@
+/* step-by-step — vertical progress rail with numbered steps */
+.slide { background: var(--c-bg); }
+.slide-cover .content.cover { justify-content: center; gap: 28px; }
+.slide-cover .headline { font-size: 88px; }
+.slide-cover .swipe { font-size: 32px; font-weight: 700; color: var(--c-secondary); }
+.numbered { position: relative; padding-left: 40px; }
+.numbered::before {
+  content: ''; position: absolute; left: 0; top: 12px; bottom: 12px; width: 8px;
+  border-radius: 8px; background: linear-gradient(180deg, var(--c-secondary), var(--c-accent));
+}
+.numbered .row { display: flex; align-items: center; gap: 30px; margin-bottom: 24px; }
+.numbered .badge { border-radius: 50%; background: var(--c-primary); }
+.numbered .headline.small { font-size: 58px; }
+.kicker { color: var(--c-accent); }
+.checks { list-style: none; display: flex; flex-direction: column; gap: 22px; }
+.checks li { display: flex; gap: 20px; font-size: 36px; align-items: flex-start; }
+.check { color: var(--c-secondary); font-weight: 800; }
+.cta-pill { align-self: flex-start; margin-top: 24px; padding: 22px 40px; border-radius: 18px;
+  background: var(--c-secondary); color: var(--c-on-primary); font-size: 38px; font-weight: 800; }

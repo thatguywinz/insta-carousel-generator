@@ -1,0 +1,19 @@
+/* numbered-list — bold editorial list with accent badges */
+.slide-cover .content.cover { justify-content: flex-end; gap: 24px; }
+.slide-cover .headline { font-size: 92px; }
+.slide-cover .swipe { margin-top: 20px; font-size: 32px; font-weight: 700; color: var(--c-accent); }
+.slide::before {
+  content: ''; position: absolute; top: 0; left: 0; width: 100%; height: 14px;
+  background: linear-gradient(90deg, var(--c-primary), var(--c-secondary));
+}
+.numbered .row { display: flex; align-items: center; gap: 34px; margin-bottom: 20px; }
+.numbered .badge { background: var(--c-secondary); }
+.numbered .headline.small { font-size: 60px; }
+.numbered .body { padding-left: 6px; }
+.content.cover .kicker { color: var(--c-secondary); }
+.cta .cta-pill, .summary .checks { margin-top: 12px; }
+.checks { list-style: none; display: flex; flex-direction: column; gap: 22px; }
+.checks li { display: flex; gap: 20px; font-size: 36px; line-height: 1.35; align-items: flex-start; }
+.check { color: var(--c-secondary); font-weight: 800; }
+.cta-pill { align-self: flex-start; margin-top: 24px; padding: 22px 40px; border-radius: 18px;
+  background: var(--c-primary); color: var(--c-on-primary); font-size: 38px; font-weight: 800; }

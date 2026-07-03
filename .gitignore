@@ -1,0 +1,44 @@
+# Secrets & credentials
+.env
+.env.*
+!.env.example
+*service-account*.json
+service-account.json
+*credentials*.json
+*.token
+*.token.json
+token.json
+gcp-key*.json
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# Build output
+dist/
+coverage/
+*.tsbuildinfo
+
+# Runtime & private output (source of truth is R2)
+runtime/*
+!runtime/.gitkeep
+output/
+generated/
+carousels/
+previews/
+*.local
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+/tmp/pw-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
