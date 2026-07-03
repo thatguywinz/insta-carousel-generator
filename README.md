@@ -38,18 +38,18 @@ Injected at runtime by the routine environment. `.env.example` holds
 **placeholders only**; never create a real `.env`. Presence is validated without
 printing values; missing required variables are reported by name only.
 
-| Variable | Purpose |
-|----------|---------|
-| `GOOGLE_SHEET_ID` | Spreadsheet id |
-| `GOOGLE_SERVICE_ACCOUNT_B64` | Base64 service-account JSON (decoded in memory) |
-| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 credentials |
-| `R2_PUBLIC_BUCKET`, `R2_PRIVATE_BUCKET` | Bucket names |
-| `R2_ENDPOINT`, `R2_PUBLIC_BASE_URL` | S3 endpoint + public CDN base (scheme optional; normalized) |
-| `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID` | Long-lived token + professional account id (LIVE) |
-| `META_GRAPH_API_VERSION` | Graph API version (default `v21.0`) |
-| `TOKEN_ENCRYPTION_KEY` | 32-byte key (hex/base64) for AES-256-GCM token encryption |
-| `TIMEZONE` | Timestamp zone (default `America/Toronto`) |
-| `NODE_ENV` | Runtime env (default `production`) |
+| Variable                                                    | Purpose                                                     |
+| ----------------------------------------------------------- | ----------------------------------------------------------- |
+| `GOOGLE_SHEET_ID`                                           | Spreadsheet id                                              |
+| `GOOGLE_SERVICE_ACCOUNT_B64`                                | Base64 service-account JSON (decoded in memory)             |
+| `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | R2 credentials                                              |
+| `R2_PUBLIC_BUCKET`, `R2_PRIVATE_BUCKET`                     | Bucket names                                                |
+| `R2_ENDPOINT`, `R2_PUBLIC_BASE_URL`                         | S3 endpoint + public CDN base (scheme optional; normalized) |
+| `INSTAGRAM_ACCESS_TOKEN`, `INSTAGRAM_USER_ID`               | Long-lived token + professional account id (LIVE)           |
+| `META_GRAPH_API_VERSION`                                    | Graph API version (default `v21.0`)                         |
+| `TOKEN_ENCRYPTION_KEY`                                      | 32-byte key (hex/base64) for AES-256-GCM token encryption   |
+| `TIMEZONE`                                                  | Timestamp zone (default `America/Toronto`)                  |
+| `NODE_ENV`                                                  | Runtime env (default `production`)                          |
 
 ## Google Sheet schema
 
@@ -68,7 +68,7 @@ content_pillar, template, slide_count, caption, preview_url, published_at,
 instagram_media_id, permalink, error`.
 
 - Statuses: `UNUSED, SELECTED, GENERATING, RENDERING, DRAFT_READY, POSTING,
-  POSTED, FAILED, VERIFY_REQUIRED`.
+POSTED, FAILED, VERIFY_REQUIRED`.
 - Priority: `High, Medium, Low`. Source: `Manual, Claude`.
 - Rows are never deleted; updates are addressed by `idea_id`. Headers are
   verified exactly before any write — mismatches fail safely.
@@ -77,7 +77,7 @@ instagram_media_id, permalink, error`.
 
 - **TEST** (required for the first bootstrap draft): select/generate → author →
   render → inspect → upload → preview → set `DRAFT_READY`. No Instagram
-  containers, no publish, row never marked `POSTED`. The preview URL *is* the
+  containers, no publish, row never marked `POSTED`. The preview URL _is_ the
   draft.
 - **LIVE**: first recover any `VERIFY_REQUIRED` row; then, if
   `PUBLISH_EXISTING_DRAFT_FIRST`, publish the oldest eligible `DRAFT_READY`;

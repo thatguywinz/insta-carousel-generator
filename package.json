@@ -20,6 +20,7 @@
     "workflow:test": "MODE_OVERRIDE=TEST tsx src/cli.ts workflow",
     "workflow:live": "tsx src/cli.ts workflow",
     "select-idea": "tsx src/cli.ts select-idea",
+    "render": "tsx src/cli.ts render",
     "render:fixture": "tsx src/cli.ts render-fixture",
     "recover": "tsx src/cli.ts recover",
     "verify:publication": "tsx src/cli.ts verify-publication"
