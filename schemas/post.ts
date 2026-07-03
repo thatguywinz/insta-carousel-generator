@@ -42,6 +42,10 @@ export const TemplateSchema = z.enum([
 ]);
 export type Template = z.infer<typeof TemplateSchema>;
 
+/** Visual theme keyed to the post's subject. Detected from content when absent. */
+export const ThemeNameSchema = z.enum(['claude', 'openai', 'default']);
+export type ThemeName = z.infer<typeof ThemeNameSchema>;
+
 /** A single slide. Fields are optional per slide type; renderer reads what it needs. */
 export const SlideSchema = z
   .object({
@@ -84,6 +88,8 @@ export const PostSchema = z
     hook: z.string().min(1).max(200),
     content_pillar: z.string().min(1).max(120),
     template: TemplateSchema,
+    /** Optional explicit visual theme; overrides keyword detection. */
+    theme: ThemeNameSchema.optional(),
     slides: z.array(SlideSchema).min(3).max(20),
     caption: z.string().min(1).max(2200),
     hashtags: z.array(z.string().min(1)).max(8),

@@ -44,12 +44,12 @@ The deterministic mechanics (selection, rendering, validation, R2, locks,
 idempotency, Instagram) live in `src/`. **Three creative steps are yours**, wired
 through files under `runtime/` (which is gitignored and ephemeral):
 
-| Step | You write | Then run |
-|------|-----------|----------|
-| Pick which idea to work on | — | `npm run select-idea` → writes `runtime/selection-context.json` |
-| Author a **new** idea (only if the queue is empty) | `runtime/idea-plan.json` `{idea, priority, content_pillar}` | (consumed by workflow) |
-| Author the carousel | `runtime/post-plan.json` (a `Post`, see `schemas/post.ts`) | `npm run render` to preview |
-| Visually inspect the rendered slides | inspect `runtime/slides/*.png`, then `runtime/visual-approval.json` `{"approved":true,"notes":"…"}` | `npm run workflow` |
+| Step                                               | You write                                                                                           | Then run                                                        |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| Pick which idea to work on                         | —                                                                                                   | `npm run select-idea` → writes `runtime/selection-context.json` |
+| Author a **new** idea (only if the queue is empty) | `runtime/idea-plan.json` `{idea, priority, content_pillar}`                                         | (consumed by workflow)                                          |
+| Author the carousel                                | `runtime/post-plan.json` (a `Post`, see `schemas/post.ts`)                                          | `npm run render` to preview                                     |
+| Visually inspect the rendered slides               | inspect `runtime/slides/*.png`, then `runtime/visual-approval.json` `{"approved":true,"notes":"…"}` | `npm run workflow`                                              |
 
 Recommended operating sequence for a normal run:
 
@@ -80,6 +80,21 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
   automated dedup check; apply semantic judgment on top.
 - The workflow overrides `idea_id` and `idempotency_key`; your `post-plan.json`
   values for those are placeholders.
+
+### Content direction & theming
+
+- This account covers **Claude / Claude Code, OpenAI / Codex, and new AI tool +
+  tech news**. Keep content timely and accurate.
+- For topics that need current facts (new releases, version numbers, dates,
+  benchmarks), **research primary sources** and put the URLs in `post.sources`.
+  Never invent version numbers, dates, or benchmark stats.
+- Set the carousel's `theme` (`claude` / `openai` / `default`) in
+  `post-plan.json` to match the subject so the right brand colors + logo apply.
+  When unset, the renderer auto-detects the theme from the idea/pillar text
+  (`detectTheme` in `src/render.ts`).
+- Visual inspection must **reject bland output**: every slide should show the
+  themed background gradient and a graphic accent, and the cover must carry the
+  theme's logo mark — not plain text on a flat background.
 
 ### Visual inspection is mandatory
 

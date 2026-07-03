@@ -1,10 +1,10 @@
 import { readFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, Browser, LaunchOptions } from 'playwright';
 import sanitizeHtml from 'sanitize-html';
-import { Post, Slide, Template } from '../schemas/post.js';
+import { Post, Slide, Template, ThemeName } from '../schemas/post.js';
 import { Settings } from '../schemas/settings.js';
 import { log } from './logger.js';
 
@@ -179,6 +179,144 @@ function esc(text: string | undefined): string {
   return sanitizeHtml(text, { allowedTags: [], allowedAttributes: {} });
 }
 
+/**
+ * Topic theming. Each carousel is visually branded to its subject: posts about
+ * Claude/Anthropic get a warm cream+clay world, posts about OpenAI/ChatGPT get
+ * a near-black+teal world, everything else keeps the premium brand default.
+ * A post may pin `theme` explicitly; otherwise it is detected from the
+ * content pillar + idea text.
+ */
+
+const THEME_KEYWORDS: Array<{ name: ThemeName; pattern: RegExp }> = [
+  { name: 'claude', pattern: /\b(claude|anthropic)\b/i },
+  { name: 'openai', pattern: /\b(codex|openai|chatgpt|gpt\d*)\b/i },
+];
+
+/** Pick the visual theme for a post (explicit `theme` field wins). */
+export function detectTheme(
+  post: Pick<Post, 'content_pillar' | 'idea'> & { theme?: ThemeName },
+): ThemeName {
+  if (post.theme) return post.theme;
+  const text = `${post.content_pillar} ${post.idea}`;
+  for (const { name, pattern } of THEME_KEYWORDS) {
+    if (pattern.test(text)) return name;
+  }
+  return 'default';
+}
+
+export interface ResolvedTheme {
+  name: ThemeName;
+  /** Theme CSS layered between brand vars and template CSS. */
+  css: string;
+  /** data-URI of the subject's mark (cover + footer), when the theme has one. */
+  logo?: string;
+  /** Wordmark label rendered beside the mark on the cover. */
+  label?: string;
+}
+
+const logoCache = new Map<string, string | undefined>();
+
+/** Load an assets/brand/<name>.svg mark as a data URI (cached; missing → undefined). */
+function logoDataUri(name: string): string | undefined {
+  if (!logoCache.has(name)) {
+    try {
+      const svg = readFileSync(path.join(REPO_ROOT, 'assets', 'brand', `${name}.svg`));
+      logoCache.set(name, `data:image/svg+xml;base64,${svg.toString('base64')}`);
+    } catch {
+      log.warn('brand mark svg missing', { name });
+      logoCache.set(name, undefined);
+    }
+  }
+  return logoCache.get(name);
+}
+
+/** Claude / Anthropic: warm cream world, clay accents, soft organic shapes. */
+function claudeThemeCss(logo: string | undefined): string {
+  return `
+  :root {
+    --c-primary: #1F1E1D; --c-secondary: #CC785C; --c-accent: #D97757;
+    --c-bg: #F0EEE6; --c-surface: #FFFDF8; --c-text: #1F1E1D;
+    --c-muted: #6E6558; --c-on-primary: #F5EDE3;
+    --c-ink-accent: #A84E30;
+    --c-on-primary-accent: #D97757;
+    --g-bg: linear-gradient(160deg, #F0EEE6 0%, #F3E7D9 55%, #F5E6D8 100%);
+    --c-card: #FFFDF8; --c-card-border: #E6D8C4;
+    --c-bad-bg: #F6E2D8; --c-bad-border: #C25E3C; --c-bad-tag: #A84E30;
+    --c-good-bg: #EAEDDF; --c-good-border: #77875D; --c-good-tag: #55673F;
+  }
+  .decor-1 { width: 880px; height: 880px; border-radius: 50%; top: -330px; right: -300px;
+    background: radial-gradient(circle, rgba(217,119,87,0.36), rgba(217,119,87,0) 68%); }
+  .decor-2 { width: 740px; height: 740px; border-radius: 50%; bottom: -290px; left: -260px;
+    background: radial-gradient(circle, rgba(204,120,92,0.26), rgba(204,120,92,0) 70%); }
+  ${
+    logo
+      ? `.decor-3 { width: 430px; height: 430px; right: -60px; bottom: 170px; opacity: 0.15;
+    transform: rotate(15deg); background: url("${logo}") center / contain no-repeat; }`
+      : ''
+  }
+  `;
+}
+
+/** OpenAI / ChatGPT: near-black with a teal glow and thin geometric accents. */
+function openaiThemeCss(): string {
+  return `
+  :root {
+    --c-primary: #10A37F; --c-secondary: #10A37F; --c-accent: #10A37F;
+    --c-bg: #0D0D0D; --c-surface: #151517; --c-text: #FFFFFF;
+    --c-muted: #A6ADBB; --c-on-primary: #05231A;
+    --c-ink-accent: #2FC79E;
+    --c-on-primary-accent: #05231A;
+    --g-bg: radial-gradient(1100px 800px at 50% -8%, rgba(16,163,127,0.20), rgba(16,163,127,0) 62%),
+            radial-gradient(900px 700px at 88% 108%, rgba(16,163,127,0.12), rgba(16,163,127,0) 58%),
+            linear-gradient(180deg, #0D0D0D 0%, #101013 100%);
+    --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,255,255,0.16);
+    --c-bad-bg: rgba(240,84,84,0.12); --c-bad-border: #F26D6D; --c-bad-tag: #FF9B8E;
+    --c-good-bg: rgba(16,163,127,0.14); --c-good-border: #10A37F; --c-good-tag: #2FC79E;
+  }
+  .decor-1 { inset: 0;
+    background:
+      linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px) 0 0 / 100% 108px,
+      linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px) 0 0 / 108px 100%; }
+  .decor-2 { width: 1600px; height: 2px; top: 310px; left: -220px; transform: rotate(-16deg);
+    background: linear-gradient(90deg, rgba(16,163,127,0), rgba(16,163,127,0.75), rgba(16,163,127,0)); }
+  .decor-3 { width: 620px; height: 620px; border: 2px solid rgba(16,163,127,0.30);
+    border-radius: 50%; top: -230px; right: -210px; }
+  `;
+}
+
+/** Default: keep the premium brand palette but add a gradient wash + accents. */
+const DEFAULT_THEME_CSS = `
+  :root {
+    --g-bg: linear-gradient(165deg, var(--c-bg) 0%,
+      color-mix(in srgb, var(--c-bg) 88%, var(--c-secondary)) 55%,
+      color-mix(in srgb, var(--c-bg) 80%, var(--c-accent)) 100%);
+  }
+  .decor-1 { width: 900px; height: 900px; border-radius: 50%; top: -380px; right: -330px;
+    background: radial-gradient(circle,
+      color-mix(in srgb, var(--c-accent) 26%, transparent), transparent 68%); }
+  .decor-2 { width: 720px; height: 720px; border-radius: 50%; bottom: -300px; left: -260px;
+    background: radial-gradient(circle,
+      color-mix(in srgb, var(--c-secondary) 20%, transparent), transparent 68%); }
+  .decor-3 { top: 0; left: 0; width: 100%; height: 12px;
+    background: linear-gradient(90deg, var(--c-secondary), var(--c-accent)); }
+`;
+
+/** Resolve the full theme (palette CSS + embedded mark) for a post. */
+export function resolveTheme(
+  post: Pick<Post, 'content_pillar' | 'idea'> & { theme?: ThemeName },
+): ResolvedTheme {
+  const name = detectTheme(post);
+  if (name === 'claude') {
+    const logo = logoDataUri('claude');
+    return { name, css: claudeThemeCss(logo), logo, label: 'Claude' };
+  }
+  if (name === 'openai') {
+    const logo = logoDataUri('openai');
+    return { name, css: openaiThemeCss(), logo, label: 'OpenAI' };
+  }
+  return { name: 'default', css: DEFAULT_THEME_CSS };
+}
+
 async function loadTemplateCss(template: Template): Promise<string> {
   const p = path.join(REPO_ROOT, 'templates', template, 'template.css');
   try {
@@ -196,6 +334,16 @@ const BASE_CSS = `
     --c-primary: #1A2B4A; --c-secondary: #3B6FE0; --c-accent: #F2B705;
     --c-bg: #FBFAF7; --c-surface: #FFFFFF; --c-text: #141B2E;
     --c-muted: #5A6478; --c-on-primary: #FFFFFF;
+    /* Accent when used AS text/glyphs (themes tune it for contrast). */
+    --c-ink-accent: var(--c-secondary);
+    /* Accent readable on top of --c-primary fills. */
+    --c-on-primary-accent: var(--c-accent);
+    /* Slide background gradient; themes always override. */
+    --g-bg: linear-gradient(180deg, var(--c-bg), var(--c-bg));
+    /* Card + paired-box semantic colors (myth/reality, mistake/solution…). */
+    --c-card: var(--c-surface); --c-card-border: #E4E7EE;
+    --c-bad-bg: #FBEDEC; --c-bad-border: #D64545; --c-bad-tag: #C23838;
+    --c-good-bg: #E9F3EC; --c-good-border: #2E9E5B; --c-good-tag: #24824A;
     --font: 'Inter', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
     --pad: 96px; --safe: 72px;
   }
@@ -207,9 +355,15 @@ const BASE_CSS = `
   .slide {
     position: relative; width: ${SLIDE_WIDTH}px; height: ${SLIDE_HEIGHT}px;
     padding: var(--pad); display: flex; flex-direction: column;
+    background: var(--g-bg); overflow: hidden;
   }
+  /* Decorative art layer: clipped to the slide, always behind content. */
+  .decor-layer { position: absolute; inset: 0; overflow: hidden;
+    pointer-events: none; z-index: 0; }
+  .decor { position: absolute; }
+  .content, .footer { position: relative; z-index: 1; }
   .kicker { font-size: 30px; font-weight: 700; letter-spacing: 3px;
-    text-transform: uppercase; color: var(--c-secondary); margin-bottom: 28px; }
+    text-transform: uppercase; color: var(--c-ink-accent); margin-bottom: 28px; }
   .headline { font-size: 82px; font-weight: 800; line-height: 1.05;
     letter-spacing: -1.5px; color: var(--c-text); }
   .headline.small { font-size: 64px; }
@@ -220,7 +374,12 @@ const BASE_CSS = `
     justify-content: center; gap: 32px; }
   .footer { display: flex; align-items: center; justify-content: space-between;
     font-size: 30px; font-weight: 600; color: var(--c-muted); }
-  .handle { color: var(--c-secondary); }
+  .handle { color: var(--c-ink-accent); }
+  .footer-logo { width: 42px; height: 42px; display: block; opacity: 0.9; }
+  .brandmark { display: flex; align-items: center; gap: 18px; }
+  .brandmark img { width: 60px; height: 60px; display: block; }
+  .brandmark span { font-size: 30px; font-weight: 700; letter-spacing: 1px;
+    color: var(--c-muted); }
   .badge { display: inline-flex; align-items: center; justify-content: center;
     min-width: 86px; height: 86px; padding: 0 22px; border-radius: 22px;
     background: var(--c-primary); color: var(--c-on-primary);
@@ -234,12 +393,17 @@ function brandVars(brand: Brand): string {
 }
 
 /** Render the inner HTML of a single slide by type. */
-function slideBody(slide: Slide, index: number): string {
+function slideBody(slide: Slide, index: number, theme?: ResolvedTheme): string {
   const kicker = slide.kicker ? `<div class="kicker">${esc(slide.kicker)}</div>` : '';
+  const brandmark =
+    theme?.logo && theme.label
+      ? `<div class="brandmark"><img src="${theme.logo}" alt=""><span>${esc(theme.label)}</span></div>`
+      : '';
   switch (slide.type) {
     case 'cover':
       return `
         <div class="content cover">
+          ${brandmark}
           ${kicker || '<div class="kicker">Carousel</div>'}
           <h1 class="headline">${esc(slide.headline)}</h1>
           ${slide.body ? `<p class="body muted">${esc(slide.body)}</p>` : ''}
@@ -316,15 +480,23 @@ export function buildSlideHtml(
   total: number,
   brand: Brand,
   templateCss: string,
+  theme?: ResolvedTheme,
 ): string {
   const footer = `
     <div class="footer">
       <span class="handle">${esc(brand.instagramHandle)}</span>
+      ${theme?.logo ? `<img class="footer-logo" src="${theme.logo}" alt="">` : ''}
       <span class="pagenum">${index} / ${total}</span>
     </div>`;
+  const decor = `
+    <div class="decor-layer" aria-hidden="true">
+      <div class="decor decor-1"></div>
+      <div class="decor decor-2"></div>
+      <div class="decor decor-3"></div>
+    </div>`;
   return `<!doctype html><html lang="${esc(brand.language)}"><head><meta charset="utf-8">
-    <style>${BASE_CSS}\n${brandVars(brand)}\n${templateCss}</style></head>
-    <body><div class="slide slide-${slide.type}">${slideBody(slide, index)}${footer}</div></body></html>`;
+    <style>${BASE_CSS}\n${brandVars(brand)}\n${theme?.css ?? DEFAULT_THEME_CSS}\n${templateCss}</style></head>
+    <body><div class="slide slide-${slide.type}">${decor}${slideBody(slide, index, theme)}${footer}</div></body></html>`;
 }
 
 export interface SlideMetrics {
@@ -356,6 +528,9 @@ const MEASURE_FN = `(() => {
   const overflowing = [];
   for (const el of all) {
     if (SKIP[el.tagName]) continue;
+    // Decorative shapes intentionally bleed past the canvas and are clipped
+    // by the .decor-layer; they carry no text and are not layout overflow.
+    if (el.closest('.decor-layer')) continue;
     const cs = getComputedStyle(el);
     const fs = parseFloat(cs.fontSize);
     const hasText = el.textContent && el.textContent.trim().length > 0;
@@ -399,6 +574,8 @@ function resolveExecutablePath(): string | undefined {
 /** Render every slide of a post to PNG buffers at exactly 1080×1350. */
 export async function renderPost(post: Post, brand: Brand): Promise<RenderedSlide[]> {
   const templateCss = await loadTemplateCss(post.template);
+  const theme = resolveTheme(post);
+  log.info('theme resolved', { theme: theme.name, template: post.template });
   let browser: Browser | null = null;
   const out: RenderedSlide[] = [];
   try {
@@ -415,7 +592,7 @@ export async function renderPost(post: Post, brand: Brand): Promise<RenderedSlid
     const total = post.slides.length;
     for (let i = 0; i < post.slides.length; i++) {
       const slide = post.slides[i]!;
-      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss);
+      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss, theme);
       const page = await context.newPage();
       await page.setViewportSize({ width: SLIDE_WIDTH, height: SLIDE_HEIGHT });
       await page.setContent(html, { waitUntil: 'networkidle' });
