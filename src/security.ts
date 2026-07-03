@@ -12,6 +12,7 @@ export const SENSITIVE_ENV_KEYS = [
   'R2_SECRET_ACCESS_KEY',
   'INSTAGRAM_ACCESS_TOKEN',
   'TOKEN_ENCRYPTION_KEY',
+  'GH_PUSH_TOKEN',
 ] as const;
 
 /** Collect the raw sensitive values currently present in the environment. */
