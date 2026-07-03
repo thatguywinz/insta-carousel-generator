@@ -428,6 +428,8 @@ async function publishExistingDraft(
   if (existing) {
     await markPosted(ctx, cfg, ideaId, existing.mediaId, existing.permalink);
     return {
+      ideaId,
+      idea: post.idea,
       status: 'POSTED',
       mediaId: existing.mediaId,
       permalink: existing.permalink,
@@ -515,6 +517,8 @@ async function publishExistingDraft(
         });
         await saveAttemptRecord(r2, { ...attempt, stage: 'failed', note: 'ambiguous publish' });
         return {
+          ideaId,
+          idea: post.idea,
           status: 'VERIFY_REQUIRED',
           sheetUpdated: true,
           template: post.template,
@@ -545,6 +549,8 @@ async function publishExistingDraft(
 
     log.info('published carousel', { ideaId, mediaId });
     return {
+      ideaId,
+      idea: post.idea,
       status: 'POSTED',
       mediaId,
       permalink,
@@ -587,7 +593,7 @@ async function recoverRow(
   const manifest = await getPrivateJson<Manifest>(r2, manifestKey(ideaId));
   if (!manifest) {
     log.warn('no manifest for VERIFY_REQUIRED row; manual review needed', { ideaId });
-    return { status: 'VERIFY_REQUIRED' };
+    return { ideaId, status: 'VERIFY_REQUIRED' };
   }
   const post = PostSchema.parse(manifest.post);
   const active = await loadActiveToken(r2, cfg);
@@ -606,6 +612,8 @@ async function recoverRow(
     });
     await markPosted(ctx, cfg, ideaId, outcome.mediaId, outcome.permalink);
     return {
+      ideaId,
+      idea: post.idea,
       status: 'POSTED',
       mediaId: outcome.mediaId,
       permalink: outcome.permalink,
@@ -619,7 +627,7 @@ async function recoverRow(
     status: 'DRAFT_READY',
     error: `recovery: ${outcome.reason}`,
   });
-  return { status: 'DRAFT_READY', sheetUpdated: true };
+  return { ideaId, idea: post.idea, status: 'DRAFT_READY', sheetUpdated: true };
 }
 
 function urlToKey(r2: R2, url: string): string {
