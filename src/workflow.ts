@@ -37,6 +37,7 @@ import {
   validateCredentials,
   checkPublishingLimit,
   createChildContainer,
+  createVideoChildContainer,
   createCarouselContainer,
   publishContainer,
   pollUntilReady,
@@ -45,6 +46,7 @@ import {
   defaultHttp,
   IgApiError,
 } from './instagram.js';
+import { MediaDescriptor, normalizeMedia } from './media.js';
 import {
   computeIdempotencyKey,
   getIdempotencyRecord,
@@ -118,7 +120,10 @@ export interface WorkflowResult {
 
 interface Manifest {
   post: Post;
+  /** Primary media URL per slide (mp4 for motion, png for image). Idempotency input. */
   slideUrls: string[];
+  /** Per-item type + poster. Absent on manifests written before motion support. */
+  slideMedia?: MediaDescriptor[];
   previewUrl: string;
   mode: 'TEST' | 'LIVE';
   createdAt: number;
@@ -205,7 +210,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
         stage('publish-existing-draft');
         activeIdeaId = draft.idea_id;
         await heartbeatLock(r2, lock, { stage: 'publish-draft', ideaId: draft.idea_id });
-        const published = await publishExistingDraft(r2, ctx, cfg, http, draft.idea_id);
+        const published = await publishExistingDraft(r2, ctx, cfg, http, draft.idea_id, lock);
         Object.assign(result, published);
         return result;
       }
@@ -275,7 +280,10 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
       content_pillar: post.content_pillar,
       template: post.template,
     });
-    const slides = await renderPost(post, brand);
+    // Refresh the lock before rendering: motion capture + encode can take
+    // minutes (especially MOTION_SLIDES=all), so start it with a full TTL.
+    await heartbeatLock(r2, lock, { stage: 'render', ideaId: selectedIdeaId });
+    const slides = await renderPost(post, brand, { motion: settings.MOTION_SLIDES });
     result.slideCount = slides.length;
 
     stage('validate');
@@ -305,13 +313,24 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     await heartbeatLock(r2, lock, { stage: 'upload', ideaId: selectedIdeaId });
     const dir = `${datePath(cfg.timezone)}/${selectedIdeaId}`;
     const slideUrls: string[] = [];
+    const slideMedia: MediaDescriptor[] = [];
     for (const s of slides) {
-      const key = `carousels/${dir}/slide-${String(s.index).padStart(2, '0')}.png`;
-      const url = await putPublic(r2, key, s.png, { contentType: 'image/png' });
-      slideUrls.push(url);
+      const base = `carousels/${dir}/slide-${String(s.index).padStart(2, '0')}`;
+      if (s.mp4) {
+        // Motion slide: publish the MP4 as the child, plus a poster still for the
+        // preview and grid thumbnail.
+        const posterUrl = await putPublic(r2, `${base}.png`, s.png, { contentType: 'image/png' });
+        const url = await putPublic(r2, `${base}.mp4`, s.mp4, { contentType: 'video/mp4' });
+        slideUrls.push(url);
+        slideMedia.push({ url, type: 'VIDEO', posterUrl });
+      } else {
+        const url = await putPublic(r2, `${base}.png`, s.png, { contentType: 'image/png' });
+        slideUrls.push(url);
+        slideMedia.push({ url, type: 'IMAGE' });
+      }
     }
 
-    const previewHtml = buildPreviewHtml({ post, slideUrls, mode, label: 'DRAFT' });
+    const previewHtml = buildPreviewHtml({ post, media: slideMedia, mode, label: 'DRAFT' });
     const previewKey = `previews/${dir}/index.html`;
     const previewUrl = await putPublic(r2, previewKey, previewHtml, {
       contentType: 'text/html; charset=utf-8',
@@ -319,13 +338,26 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     });
     result.previewUrl = previewUrl;
 
-    // Confirm every public URL is live and correctly typed.
+    // Confirm every public asset is live and correctly typed. Images use a GET
+    // (small); videos use HEAD so the MP4 isn't fully downloaded here.
     stage('verify-uploads');
-    for (const url of slideUrls) {
-      const v = await verifyPublicUrl(url);
-      if (!v.ok) throw new Error(`uploaded slide not reachable (status ${v.status}): ${url}`);
-      if (v.contentType && !v.contentType.startsWith('image/')) {
-        throw new Error(`uploaded slide has wrong content-type ${v.contentType}: ${url}`);
+    for (const m of slideMedia) {
+      if (m.type === 'VIDEO') {
+        const head = await headPublic(r2, urlToKey(r2, m.url));
+        if (!head) throw new Error(`uploaded video not reachable: ${m.url}`);
+        if (head.contentType && !head.contentType.startsWith('video/')) {
+          throw new Error(`uploaded video has wrong content-type ${head.contentType}: ${m.url}`);
+        }
+        if (m.posterUrl) {
+          const ph = await headPublic(r2, urlToKey(r2, m.posterUrl));
+          if (!ph) throw new Error(`video poster not reachable: ${m.posterUrl}`);
+        }
+      } else {
+        const v = await verifyPublicUrl(m.url);
+        if (!v.ok) throw new Error(`uploaded slide not reachable (status ${v.status}): ${m.url}`);
+        if (v.contentType && !v.contentType.startsWith('image/')) {
+          throw new Error(`uploaded slide has wrong content-type ${v.contentType}: ${m.url}`);
+        }
       }
     }
     const pv = await verifyPublicUrl(previewUrl);
@@ -339,6 +371,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     const manifest: Manifest = {
       post: finalPost,
       slideUrls,
+      slideMedia,
       previewUrl,
       mode,
       createdAt: Date.now(),
@@ -368,7 +401,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     // LIVE publication path.
     stage('publish');
     await heartbeatLock(r2, lock, { stage: 'publish', ideaId: selectedIdeaId });
-    const published = await publishExistingDraft(r2, ctx, cfg, http, selectedIdeaId);
+    const published = await publishExistingDraft(r2, ctx, cfg, http, selectedIdeaId, lock);
     Object.assign(result, published);
     return result;
   } catch (err) {
@@ -411,6 +444,7 @@ async function publishExistingDraft(
   cfg: AppConfig,
   http: HttpClient,
   ideaId: string,
+  lock: LockHandle,
 ): Promise<Partial<WorkflowResult>> {
   if (!instagramConfigured(cfg)) {
     throw new Error(
@@ -420,7 +454,9 @@ async function publishExistingDraft(
   const manifest = await getPrivateJson<Manifest>(r2, manifestKey(ideaId));
   if (!manifest) throw new Error(`no manifest found for idea ${ideaId}; cannot publish`);
   const post = PostSchema.parse(manifest.post);
-  const slideUrls = manifest.slideUrls;
+  // Normalize both the new (slideMedia) and legacy (flat slideUrls) manifest
+  // shapes so an existing pre-motion DRAFT_READY draft still publishes.
+  const media = normalizeMedia(manifest.slideMedia, manifest.slideUrls);
   const idempotencyKey = post.idempotency_key;
 
   // Idempotency: already published?
@@ -431,19 +467,27 @@ async function publishExistingDraft(
       status: 'POSTED',
       mediaId: existing.mediaId,
       permalink: existing.permalink,
-      slideCount: slideUrls.length,
+      slideCount: media.length,
       template: post.template,
       previewUrl: manifest.previewUrl,
       sheetUpdated: true,
     };
   }
 
-  // Confirm public URLs still work before touching Instagram.
-  for (const url of slideUrls) {
-    const head = await headPublic(r2, urlToKey(r2, url));
-    const v = await verifyPublicUrl(url);
-    if (!v.ok) throw new Error(`slide URL not reachable before publish: ${url}`);
-    void head;
+  // Confirm public assets still work before touching Instagram. Images use a GET
+  // (small); videos use HEAD so the MP4 isn't fully downloaded twice per publish.
+  for (const m of media) {
+    if (m.type === 'VIDEO') {
+      const head = await headPublic(r2, urlToKey(r2, m.url));
+      if (!head) throw new Error(`video URL not reachable before publish: ${m.url}`);
+      if (m.posterUrl) {
+        const ph = await headPublic(r2, urlToKey(r2, m.posterUrl));
+        if (!ph) throw new Error(`video poster not reachable before publish: ${m.posterUrl}`);
+      }
+    } else {
+      const v = await verifyPublicUrl(m.url);
+      if (!v.ok) throw new Error(`slide URL not reachable before publish: ${m.url}`);
+    }
   }
 
   const active = await loadActiveToken(r2, cfg);
@@ -477,17 +521,36 @@ async function publishExistingDraft(
     updatedAt: Date.now(),
   };
 
+  // Heartbeat the lock during (potentially minutes-long) video processing so a
+  // concurrent run can't steal it mid-publish.
+  const heartbeatSleep = async (ms: number): Promise<void> => {
+    try {
+      await heartbeatLock(r2, lock, { stage: 'publish-poll', ideaId });
+    } catch {
+      /* best-effort; polling continues regardless */
+    }
+    await new Promise((r) => setTimeout(r, ms));
+  };
+  const hasVideo = media.some((m) => m.type === 'VIDEO');
+  // Video containers resolve slowly; give them a longer budget at ~1/min cadence.
+  const pollOpts = hasVideo
+    ? { maxAttempts: 20, baseDelayMs: 4000, sleep: heartbeatSleep }
+    : { sleep: heartbeatSleep };
+
   try {
-    // Build children.
-    for (const url of slideUrls) {
-      const childId = await createChildContainer(ig, url);
+    // Build children (image or video per descriptor).
+    for (const m of media) {
+      const childId =
+        m.type === 'VIDEO'
+          ? await createVideoChildContainer(ig, m.url)
+          : await createChildContainer(ig, m.url);
       attempt.childContainerIds.push(childId);
     }
     await saveAttemptRecord(r2, attempt);
 
-    // Poll children ready.
+    // Poll children ready (video children resolve slowly).
     for (const childId of attempt.childContainerIds) {
-      await pollUntilReady(ig, childId);
+      await pollUntilReady(ig, childId, pollOpts);
     }
 
     // Parent carousel.
@@ -497,7 +560,7 @@ async function publishExistingDraft(
     attempt.stage = 'parent-created';
     await saveAttemptRecord(r2, attempt);
 
-    await pollUntilReady(ig, parentId);
+    await pollUntilReady(ig, parentId, pollOpts);
 
     // Publish — after this point the outcome may be ambiguous on failure.
     attempt.stage = 'publish-submitted';
@@ -518,7 +581,7 @@ async function publishExistingDraft(
           status: 'VERIFY_REQUIRED',
           sheetUpdated: true,
           template: post.template,
-          slideCount: slideUrls.length,
+          slideCount: media.length,
           previewUrl: manifest.previewUrl,
         };
       }
@@ -526,11 +589,11 @@ async function publishExistingDraft(
     }
 
     // Verify ownership + permalink.
-    const media = await getMedia(ig, mediaId);
-    if (media.ownerId && media.ownerId !== ig.userId) {
+    const published = await getMedia(ig, mediaId);
+    if (published.ownerId && published.ownerId !== ig.userId) {
       throw new Error('published media owner does not match configured account');
     }
-    const permalink = media.permalink;
+    const permalink = published.permalink;
 
     await saveIdempotencyRecord(r2, {
       idempotencyKey,
@@ -548,7 +611,7 @@ async function publishExistingDraft(
       status: 'POSTED',
       mediaId,
       permalink,
-      slideCount: slideUrls.length,
+      slideCount: media.length,
       template: post.template,
       previewUrl: manifest.previewUrl,
       sheetUpdated: true,

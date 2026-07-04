@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Mistral mark">
+  <!-- Editorial placeholder pixel-flame grid referencing Mistral AI; third-party mark used editorially. -->
+  <g>
+    <g fill="#FFD800"><rect x="12" y="16" width="15" height="15"/><rect x="34" y="16" width="15" height="15"/><rect x="56" y="16" width="15" height="15"/><rect x="78" y="16" width="10" height="15"/></g>
+    <g fill="#FF8205"><rect x="12" y="38" width="15" height="15"/><rect x="34" y="38" width="15" height="15"/><rect x="56" y="38" width="15" height="15"/></g>
+    <g fill="#FA520F"><rect x="12" y="60" width="15" height="15"/><rect x="34" y="60" width="15" height="15"/></g>
+    <g fill="#E10500"><rect x="12" y="82" width="15" height="12"/></g>
+  </g>
+</svg>

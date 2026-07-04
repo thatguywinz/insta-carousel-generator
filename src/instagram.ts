@@ -141,6 +141,33 @@ export async function createChildContainer(ig: IgClient, imageUrl: string): Prom
   return id;
 }
 
+/**
+ * Create one carousel-item child container for a slide VIDEO URL. Uses
+ * `media_type=VIDEO` (the correct type for carousel children; REELS is for
+ * standalone video posts). The container processes asynchronously — poll it to
+ * FINISHED before assembling the parent CAROUSEL.
+ */
+export async function createVideoChildContainer(ig: IgClient, videoUrl: string): Promise<string> {
+  const url = `${ig.base}/${ig.userId}/media`;
+  const res = await ig.http.post(url, {
+    video_url: videoUrl,
+    media_type: 'VIDEO',
+    is_carousel_item: 'true',
+    access_token: ig.token,
+  });
+  if (res.status !== 200) {
+    const permanent = isPermanentError(res.status, res.json);
+    throw new IgApiError(
+      `create video child container failed: ${errMessage(res.json)}`,
+      permanent,
+      res.status,
+    );
+  }
+  const id = (res.json as { id?: string }).id;
+  if (!id) throw new IgApiError('video child container returned no id', true, res.status);
+  return id;
+}
+
 /** Create the parent CAROUSEL container with ordered child ids and caption. */
 export async function createCarouselContainer(
   ig: IgClient,

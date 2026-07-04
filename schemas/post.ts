@@ -39,11 +39,25 @@ export const TemplateSchema = z.enum([
   'mistake-solution',
   'comparison',
   'checklist',
+  'breaking-news',
 ]);
 export type Template = z.infer<typeof TemplateSchema>;
 
-/** Visual theme keyed to the post's subject. Detected from content when absent. */
-export const ThemeNameSchema = z.enum(['claude', 'openai', 'default']);
+/**
+ * Visual theme keyed to the post's subject. Detected from content when absent.
+ * `breaking` is a generic high-attention "AI news" look for topics that don't
+ * map to a specific vendor.
+ */
+export const ThemeNameSchema = z.enum([
+  'claude',
+  'openai',
+  'gemini',
+  'grok',
+  'meta',
+  'mistral',
+  'breaking',
+  'default',
+]);
 export type ThemeName = z.infer<typeof ThemeNameSchema>;
 
 /** A single slide. Fields are optional per slide type; renderer reads what it needs. */
@@ -71,6 +85,13 @@ export const SlideSchema = z
     items: z.array(z.string().max(160)).max(8).optional(),
     /** small eyebrow/kicker text. */
     kicker: z.string().max(60).optional(),
+    /**
+     * Motion override. When true this slide renders as an animated MP4 (a "moving"
+     * carousel item); when false it stays a static image. When omitted, the
+     * MOTION_SLIDES setting decides (cover animates by default). Optional so older
+     * manifests without the field still re-parse under `.strict()`.
+     */
+    animate: z.boolean().optional(),
   })
   .strict();
 export type Slide = z.infer<typeof SlideSchema>;

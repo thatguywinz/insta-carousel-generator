@@ -1,5 +1,6 @@
 import sanitizeHtml from 'sanitize-html';
 import { Post } from '../schemas/post.js';
+import { MediaDescriptor } from './media.js';
 
 /**
  * Static HTML preview page for a carousel. Contains NO credentials, secrets or
@@ -12,19 +13,23 @@ function esc(text: string): string {
 
 export interface PreviewInput {
   post: Post;
-  slideUrls: string[];
+  media: MediaDescriptor[];
   mode: 'TEST' | 'LIVE';
   label: 'DRAFT' | 'PUBLISHED';
   permalink?: string | null;
 }
 
 export function buildPreviewHtml(input: PreviewInput): string {
-  const { post, slideUrls, mode, label, permalink } = input;
-  const slides = slideUrls
-    .map(
-      (url, i) =>
-        `<figure class="slide"><img src="${esc(url)}" alt="Slide ${i + 1}" width="1080" height="1350" loading="lazy"><figcaption>Slide ${i + 1} / ${slideUrls.length}</figcaption></figure>`,
-    )
+  const { post, media, mode, label, permalink } = input;
+  const slides = media
+    .map((m, i) => {
+      const caption = `Slide ${i + 1} / ${media.length}${m.type === 'VIDEO' ? ' · motion' : ''}`;
+      const inner =
+        m.type === 'VIDEO'
+          ? `<video controls muted loop playsinline preload="metadata"${m.posterUrl ? ` poster="${esc(m.posterUrl)}"` : ''} width="1080" height="1350"><source src="${esc(m.url)}" type="video/mp4"></video>`
+          : `<img src="${esc(m.url)}" alt="Slide ${i + 1}" width="1080" height="1350" loading="lazy">`;
+      return `<figure class="slide">${inner}<figcaption>${caption}</figcaption></figure>`;
+    })
     .join('\n');
   const hashtags = post.hashtags.map((h) => (h.startsWith('#') ? h : `#${h}`)).join(' ');
   const permalinkHtml = permalink
@@ -56,7 +61,7 @@ export function buildPreviewHtml(input: PreviewInput): string {
   .meta span { background: var(--card); padding:8px 14px; border-radius:10px; }
   .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap:18px; }
   .slide { margin:0; background: var(--card); border-radius:14px; overflow:hidden; }
-  .slide img { width:100%; height:auto; display:block; }
+  .slide img, .slide video { width:100%; height:auto; display:block; }
   figcaption { padding:10px 14px; font-size:13px; color:var(--muted); }
   .caption { white-space: pre-wrap; background: var(--card); padding:22px; border-radius:14px; margin-top:28px; font-size:15px; }
   .hashtags { color: var(--accent); margin-top:12px; font-size:15px; }
@@ -74,7 +79,7 @@ export function buildPreviewHtml(input: PreviewInput): string {
   <div class="meta">
     <span>Pillar: ${esc(post.content_pillar)}</span>
     <span>Template: ${esc(post.template)}</span>
-    <span>Slides: ${slideUrls.length}</span>
+    <span>Slides: ${media.length}</span>
     <span>Generated: ${esc(post.generated_at)}</span>
   </div>
   ${permalinkHtml}

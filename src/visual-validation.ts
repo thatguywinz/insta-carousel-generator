@@ -3,6 +3,7 @@ import sharp from 'sharp';
 import { Post } from '../schemas/post.js';
 import { Settings } from '../schemas/settings.js';
 import { RenderedSlide, SLIDE_WIDTH, SLIDE_HEIGHT, MIN_BODY_FONT_PX } from './render.js';
+import { inspectMp4 } from './motion.js';
 import { validateSlideBounds } from '../schemas/post.js';
 
 /**
@@ -270,17 +271,35 @@ export async function validateImages(slides: RenderedSlide[]): Promise<Validatio
       });
     }
 
-    // Exact-duplicate image detection.
-    const hash = crypto.createHash('sha256').update(s.png).digest('hex');
-    if (hashes.has(hash)) {
-      issues.push({
-        slide: s.index,
-        code: 'DUP_IMAGE',
-        message: `identical render to slide ${hashes.get(hash)}`,
-        severity: 'error',
-      });
-    } else {
-      hashes.set(hash, s.index);
+    // Exact-duplicate image detection. Motion slides are keyed by their poster,
+    // which can legitimately repeat across similar animated frames, so skip the
+    // dup check for them (their MP4s are what actually differ downstream).
+    if (!s.mp4) {
+      const hash = crypto.createHash('sha256').update(s.png).digest('hex');
+      if (hashes.has(hash)) {
+        issues.push({
+          slide: s.index,
+          code: 'DUP_IMAGE',
+          message: `identical render to slide ${hashes.get(hash)}`,
+          severity: 'error',
+        });
+      } else {
+        hashes.set(hash, s.index);
+      }
+    }
+
+    // Motion slides: structurally sanity-check the encoded MP4 (deep spec
+    // validation happens in verify:motion against the live API).
+    if (s.mp4) {
+      const v = inspectMp4(s.mp4);
+      if (!v.ok) {
+        issues.push({
+          slide: s.index,
+          code: 'BAD_VIDEO',
+          message: `invalid motion mp4: ${v.reason} (${v.bytes} bytes)`,
+          severity: 'error',
+        });
+      }
     }
   }
 

@@ -2,21 +2,48 @@ import { readFile } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium, Browser, LaunchOptions } from 'playwright';
+import { chromium, Browser, LaunchOptions, Page } from 'playwright';
 import sanitizeHtml from 'sanitize-html';
 import { Post, Slide, Template, ThemeName } from '../schemas/post.js';
-import { Settings } from '../schemas/settings.js';
+import { Settings, MotionSlides } from '../schemas/settings.js';
 import { log } from './logger.js';
+import { captureFrames, encodeMp4, pauseAndReset, resolveFfmpeg } from './motion.js';
 
 /**
  * Deterministic HTML/CSS → 1080×1350 image renderer. Templates provide a
  * consistent visual system via per-template CSS; brand values from the Sheet
  * drive CSS custom properties. Rendering is done headlessly with Chromium.
+ * Slides selected for motion are additionally captured to an animated MP4.
  */
 
 export const SLIDE_WIDTH = 1080;
 export const SLIDE_HEIGHT = 1350;
 export const MIN_BODY_FONT_PX = 26;
+/** Auto-fit floor for the cover headline. Below this the hook stops working, so */
+/** we surface a warning to shorten copy rather than shrink further. */
+export const HEADLINE_FLOOR_PX = 56;
+
+/** Which slides render as animated MP4s. Mirrors the MOTION_SLIDES setting. */
+export type MotionMode = MotionSlides;
+
+/**
+ * Decide whether a slide animates. An explicit per-slide `animate` flag always
+ * wins; otherwise the MOTION_SLIDES mode decides (the cover is slide index 1).
+ */
+export function shouldAnimate(slide: Slide, index: number, mode: MotionMode): boolean {
+  if (slide.animate === true) return true;
+  if (slide.animate === false) return false;
+  switch (mode) {
+    case 'all':
+      return true;
+    case 'cover':
+    case 'cover+key':
+      return index === 1;
+    case 'off':
+    default:
+      return false;
+  }
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
@@ -189,7 +216,16 @@ function esc(text: string | undefined): string {
 
 const THEME_KEYWORDS: Array<{ name: ThemeName; pattern: RegExp }> = [
   { name: 'claude', pattern: /\b(claude|anthropic)\b/i },
-  { name: 'openai', pattern: /\b(codex|openai|chatgpt|gpt\d*)\b/i },
+  { name: 'openai', pattern: /\b(codex|openai|chatgpt|gpt\d*|sora|dall-?e)\b/i },
+  { name: 'gemini', pattern: /\b(gemini|deepmind|bard)\b/i },
+  { name: 'grok', pattern: /\b(grok|xai|x\.ai)\b/i },
+  { name: 'meta', pattern: /\b(meta\s?ai|llama\d*|meta['’]s|facebook\s?ai)\b/i },
+  { name: 'mistral', pattern: /\b(mistral|mixtral|le\s?chat)\b/i },
+  // Generic attention theme — matched last so a named vendor always wins.
+  {
+    name: 'breaking',
+    pattern: /\b(breaking|just\s?(shipped|launched|dropped|released)|leaked|rumou?r)\b/i,
+  },
 ];
 
 /** Pick the visual theme for a post (explicit `theme` field wins). */
@@ -284,6 +320,126 @@ function openaiThemeCss(): string {
   `;
 }
 
+/** A faint, rotated brand mark bled into the lower-right (shared decor-3). */
+function logoDecor(logo: string | undefined, opacity = 0.14): string {
+  return logo
+    ? `.decor-3 { width: 430px; height: 430px; right: -50px; bottom: 160px; opacity: ${opacity};
+    transform: rotate(12deg); background: url("${logo}") center / contain no-repeat; }`
+    : '';
+}
+
+/** Google Gemini: cool white with a blue→purple spark and soft glows. */
+function geminiThemeCss(logo: string | undefined): string {
+  return `
+  :root {
+    --c-primary: #1B1B28; --c-secondary: #4285F4; --c-accent: #9B72CB;
+    --c-bg: #F6F8FE; --c-surface: #FFFFFF; --c-text: #1B1B28;
+    --c-muted: #5B6072; --c-on-primary: #FFFFFF;
+    --c-ink-accent: #6C4BB6; --c-on-primary-accent: #C9B6E8;
+    --g-bg: radial-gradient(1000px 760px at 12% -6%, rgba(66,133,244,0.20), rgba(66,133,244,0) 60%),
+            radial-gradient(900px 720px at 92% 108%, rgba(155,114,203,0.22), rgba(155,114,203,0) 58%),
+            linear-gradient(160deg, #F6F8FE 0%, #F1F0FB 100%);
+    --c-card: #FFFFFF; --c-card-border: #E1E6F5;
+    --c-bad-bg: #FCEBEC; --c-bad-border: #D64545; --c-bad-tag: #C23838;
+    --c-good-bg: #EAF1FC; --c-good-border: #4285F4; --c-good-tag: #2C64C8;
+  }
+  .decor-1 { width: 860px; height: 860px; border-radius: 50%; top: -320px; right: -280px;
+    background: radial-gradient(circle, rgba(66,133,244,0.28), rgba(66,133,244,0) 68%); }
+  .decor-2 { width: 720px; height: 720px; border-radius: 50%; bottom: -280px; left: -250px;
+    background: radial-gradient(circle, rgba(155,114,203,0.26), rgba(155,114,203,0) 70%); }
+  ${logoDecor(logo, 0.12)}
+  `;
+}
+
+/** xAI Grok: stark near-black with a cool electric accent. */
+function grokThemeCss(logo: string | undefined): string {
+  return `
+  :root {
+    --c-primary: #F3F4F6; --c-secondary: #E7E9EA; --c-accent: #7FB2FF;
+    --c-bg: #0A0A0C; --c-surface: #16171A; --c-text: #F3F4F6;
+    --c-muted: #A6ADBB; --c-on-primary: #0A0A0C;
+    --c-ink-accent: #9CC4FF; --c-on-primary-accent: #0A0A0C;
+    --g-bg: radial-gradient(1100px 780px at 78% -10%, rgba(127,178,255,0.16), rgba(127,178,255,0) 60%),
+            linear-gradient(180deg, #0A0A0C 0%, #101116 100%);
+    --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,255,255,0.16);
+    --c-bad-bg: rgba(240,84,84,0.12); --c-bad-border: #F26D6D; --c-bad-tag: #FF9B8E;
+    --c-good-bg: rgba(127,178,255,0.14); --c-good-border: #7FB2FF; --c-good-tag: #9CC4FF;
+  }
+  .decor-1 { width: 1500px; height: 2px; top: 300px; left: -200px; transform: rotate(-18deg);
+    background: linear-gradient(90deg, rgba(127,178,255,0), rgba(127,178,255,0.7), rgba(127,178,255,0)); }
+  .decor-2 { width: 640px; height: 640px; border: 2px solid rgba(255,255,255,0.10);
+    border-radius: 50%; top: -240px; right: -220px; }
+  ${logoDecor(logo, 0.1)}
+  `;
+}
+
+/** Meta AI: light with a bold Meta-blue ribbon and glow. */
+function metaThemeCss(logo: string | undefined): string {
+  return `
+  :root {
+    --c-primary: #101828; --c-secondary: #0866FF; --c-accent: #0866FF;
+    --c-bg: #F4F7FF; --c-surface: #FFFFFF; --c-text: #101828;
+    --c-muted: #566074; --c-on-primary: #FFFFFF;
+    --c-ink-accent: #0A5AE0; --c-on-primary-accent: #CFE0FF;
+    --g-bg: radial-gradient(1000px 780px at 88% -8%, rgba(8,102,255,0.22), rgba(8,102,255,0) 60%),
+            linear-gradient(165deg, #F4F7FF 0%, #EAF0FF 100%);
+    --c-card: #FFFFFF; --c-card-border: #DCE6FB;
+    --c-bad-bg: #FCEBEC; --c-bad-border: #D64545; --c-bad-tag: #C23838;
+    --c-good-bg: #E7F0FF; --c-good-border: #0866FF; --c-good-tag: #0A5AE0;
+  }
+  .decor-1 { width: 900px; height: 900px; border-radius: 50%; top: -360px; right: -300px;
+    background: radial-gradient(circle, rgba(8,102,255,0.24), rgba(8,102,255,0) 68%); }
+  .decor-2 { width: 700px; height: 700px; border-radius: 50%; bottom: -300px; left: -260px;
+    background: radial-gradient(circle, rgba(8,102,255,0.14), rgba(8,102,255,0) 70%); }
+  ${logoDecor(logo, 0.1)}
+  `;
+}
+
+/** Mistral: dark with a warm flame gradient rising from the base. */
+function mistralThemeCss(logo: string | undefined): string {
+  return `
+  :root {
+    --c-primary: #FBF3EC; --c-secondary: #FA520F; --c-accent: #FF8205;
+    --c-bg: #0E0B09; --c-surface: #1A1512; --c-text: #FBF3EC;
+    --c-muted: #C6A992; --c-on-primary: #1A0E06;
+    --c-ink-accent: #FF8A3D; --c-on-primary-accent: #2A1305;
+    --g-bg: radial-gradient(1100px 820px at 50% 118%, rgba(250,82,15,0.28), rgba(250,82,15,0) 58%),
+            radial-gradient(760px 620px at 86% -8%, rgba(255,130,5,0.16), rgba(255,130,5,0) 60%),
+            linear-gradient(180deg, #0E0B09 0%, #140F0B 100%);
+    --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,180,120,0.20);
+    --c-bad-bg: rgba(240,84,84,0.12); --c-bad-border: #F26D6D; --c-bad-tag: #FF9B8E;
+    --c-good-bg: rgba(255,130,5,0.14); --c-good-border: #FF8205; --c-good-tag: #FF8A3D;
+  }
+  .decor-1 { width: 900px; height: 900px; border-radius: 50%; bottom: -360px; left: -220px;
+    background: radial-gradient(circle, rgba(250,82,15,0.30), rgba(250,82,15,0) 68%); }
+  .decor-2 { width: 640px; height: 640px; border-radius: 50%; top: -240px; right: -200px;
+    background: radial-gradient(circle, rgba(255,130,5,0.18), rgba(255,130,5,0) 70%); }
+  ${logoDecor(logo, 0.12)}
+  `;
+}
+
+/** Generic high-attention "AI news / breaking" look: red + near-black, urgent. */
+function breakingThemeCss(logo: string | undefined): string {
+  return `
+  :root {
+    --c-primary: #FFFFFF; --c-secondary: #FF3B30; --c-accent: #FFD400;
+    --c-bg: #0C0C0E; --c-surface: #17171B; --c-text: #FFFFFF;
+    --c-muted: #B4B9C6; --c-on-primary: #14060A;
+    --c-ink-accent: #FF6A61; --c-on-primary-accent: #14060A;
+    --g-bg: radial-gradient(1200px 820px at 50% -12%, rgba(255,59,48,0.26), rgba(255,59,48,0) 56%),
+            linear-gradient(180deg, #0C0C0E 0%, #121016 100%);
+    --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,255,255,0.16);
+    --c-bad-bg: rgba(255,59,48,0.14); --c-bad-border: #FF3B30; --c-bad-tag: #FF6A61;
+    --c-good-bg: rgba(255,212,0,0.14); --c-good-border: #FFD400; --c-good-tag: #F2C200;
+  }
+  .decor-1 { top: 0; left: 0; width: 100%; height: 14px;
+    background: linear-gradient(90deg, #FF3B30, #FFD400); }
+  .decor-2 { width: 900px; height: 900px; border-radius: 50%; bottom: -360px; right: -300px;
+    background: radial-gradient(circle, rgba(255,59,48,0.18), rgba(255,59,48,0) 70%); }
+  ${logoDecor(logo, 0.1)}
+  `;
+}
+
 /** Default: keep the premium brand palette but add a gradient wash + accents. */
 const DEFAULT_THEME_CSS = `
   :root {
@@ -306,15 +462,38 @@ export function resolveTheme(
   post: Pick<Post, 'content_pillar' | 'idea'> & { theme?: ThemeName },
 ): ResolvedTheme {
   const name = detectTheme(post);
-  if (name === 'claude') {
-    const logo = logoDataUri('claude');
-    return { name, css: claudeThemeCss(logo), logo, label: 'Claude' };
+  switch (name) {
+    case 'claude': {
+      const logo = logoDataUri('claude');
+      return { name, css: claudeThemeCss(logo), logo, label: 'Claude' };
+    }
+    case 'openai': {
+      const logo = logoDataUri('openai');
+      return { name, css: openaiThemeCss(), logo, label: 'OpenAI' };
+    }
+    case 'gemini': {
+      const logo = logoDataUri('gemini');
+      return { name, css: geminiThemeCss(logo), logo, label: 'Gemini' };
+    }
+    case 'grok': {
+      const logo = logoDataUri('grok');
+      return { name, css: grokThemeCss(logo), logo, label: 'Grok' };
+    }
+    case 'meta': {
+      const logo = logoDataUri('meta');
+      return { name, css: metaThemeCss(logo), logo, label: 'Meta AI' };
+    }
+    case 'mistral': {
+      const logo = logoDataUri('mistral');
+      return { name, css: mistralThemeCss(logo), logo, label: 'Mistral' };
+    }
+    case 'breaking': {
+      const logo = logoDataUri('breaking');
+      return { name, css: breakingThemeCss(logo), logo, label: 'AI News' };
+    }
+    default:
+      return { name: 'default', css: DEFAULT_THEME_CSS };
   }
-  if (name === 'openai') {
-    const logo = logoDataUri('openai');
-    return { name, css: openaiThemeCss(), logo, label: 'OpenAI' };
-  }
-  return { name: 'default', css: DEFAULT_THEME_CSS };
 }
 
 async function loadTemplateCss(template: Template): Promise<string> {
@@ -385,6 +564,56 @@ const BASE_CSS = `
     background: var(--c-primary); color: var(--c-on-primary);
     font-size: 46px; font-weight: 800; }
   .pagenum { font-variant-numeric: tabular-nums; }
+`;
+
+/**
+ * Motion layer. Applied only to `.slide.motion` (animated slides), so static
+ * renders are byte-identical to before. Every animation is:
+ *   - "settled at t=0": frame 0 equals the static composition, which is what the
+ *     overflow validator (MEASURE_FN, run once at t=0) sees AND what Instagram
+ *     shows as the grid thumbnail. No entrance reveals, no off-canvas starts.
+ *   - periodic over 2s (or a divisor), so the captured 2s loop tiles seamlessly
+ *     when ffmpeg repeats it to reach the 3s+ minimum.
+ * Content elements animate only non-layout properties (background-position,
+ * text-shadow, opacity) or transforms with generous margin; decor lives in the
+ * clipped .decor-layer and may transform freely.
+ */
+const ANIM_CSS = `
+  @keyframes bg-shimmer {
+    0% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+    100% { background-position: 0% 50%; }
+  }
+  @keyframes blob-a {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(26px, -20px) scale(1.06); }
+  }
+  @keyframes blob-b {
+    0%, 100% { transform: translate(0, 0) scale(1); }
+    50% { transform: translate(-22px, 16px) scale(1.05); }
+  }
+  @keyframes spin-slow {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+  @keyframes hl-glow {
+    0%, 100% { text-shadow: 0 0 0 color-mix(in srgb, var(--c-ink-accent) 0%, transparent); }
+    50% { text-shadow: 0 0 34px color-mix(in srgb, var(--c-ink-accent) 55%, transparent); }
+  }
+  @keyframes kicker-pulse {
+    0%, 100% { opacity: 0.82; }
+    50% { opacity: 1; }
+  }
+  @keyframes swipe-bob {
+    0%, 100% { transform: translateX(0); opacity: 0.7; }
+    50% { transform: translateX(12px); opacity: 1; }
+  }
+  .slide.motion { background-size: 200% 200%; animation: bg-shimmer 2s ease-in-out infinite; }
+  .slide.motion .decor-1 { animation: blob-a 2s ease-in-out infinite; }
+  .slide.motion .decor-2 { animation: blob-b 2s ease-in-out infinite; }
+  .slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+  .slide.motion .kicker { animation: kicker-pulse 2s ease-in-out infinite; }
+  .slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
 `;
 
 function brandVars(brand: Brand): string {
@@ -481,6 +710,7 @@ export function buildSlideHtml(
   brand: Brand,
   templateCss: string,
   theme?: ResolvedTheme,
+  animate = false,
 ): string {
   const footer = `
     <div class="footer">
@@ -494,9 +724,11 @@ export function buildSlideHtml(
       <div class="decor decor-2"></div>
       <div class="decor decor-3"></div>
     </div>`;
+  const motionCss = animate ? `\n${ANIM_CSS}` : '';
+  const motionClass = animate ? ' motion' : '';
   return `<!doctype html><html lang="${esc(brand.language)}"><head><meta charset="utf-8">
-    <style>${BASE_CSS}\n${brandVars(brand)}\n${theme?.css ?? DEFAULT_THEME_CSS}\n${templateCss}</style></head>
-    <body><div class="slide slide-${slide.type}">${decor}${slideBody(slide, index, theme)}${footer}</div></body></html>`;
+    <style>${BASE_CSS}\n${brandVars(brand)}\n${theme?.css ?? DEFAULT_THEME_CSS}\n${templateCss}${motionCss}</style></head>
+    <body><div class="slide slide-${slide.type}${motionClass}">${decor}${slideBody(slide, index, theme)}${footer}</div></body></html>`;
 }
 
 export interface SlideMetrics {
@@ -513,11 +745,46 @@ export interface SlideMetrics {
 export interface RenderedSlide {
   index: number;
   type: string;
+  /** Always a real PNG: the slide for static items, the poster (t=0 frame) for */
+  /** motion items. Keeps sharp validation, the preview <img>, and PNG inspection */
+  /** working uniformly. */
   png: Buffer;
+  /** Present only for animated slides: the encoded H.264 MP4 to publish. */
+  mp4?: Buffer;
   width: number;
   height: number;
   metrics: SlideMetrics;
 }
+
+/**
+ * In-page cover-headline auto-fit. Templates set the cover headline size with
+ * higher-specificity CSS loaded last, so we shrink via an inline style (which
+ * wins) — never the base rule. Only shrinks when the natural size overflows, so
+ * covers that already fit stay byte-identical. Floors at HEADLINE_FLOOR_PX; if
+ * copy still overflows there, MEASURE_FN reports OVERFLOW and validation blocks,
+ * signalling the author to shorten rather than rendering an illegibly small hook.
+ */
+const AUTOFIT_FN = `(async () => {
+  const W = ${SLIDE_WIDTH}, H = ${SLIDE_HEIGHT}, FLOOR = ${HEADLINE_FLOOR_PX};
+  try { await document.fonts.ready; } catch (e) {}
+  const el = document.querySelector('.slide-cover .headline');
+  if (!el) return { fitted: false };
+  const fits = () => {
+    const r = el.getBoundingClientRect();
+    return r.right <= W + 1.5 && r.bottom <= H + 1.5 && r.left >= -1.5 && r.top >= -1.5
+      && document.body.scrollWidth <= W + 1 && document.body.scrollHeight <= H + 1;
+  };
+  if (fits()) return { fitted: false };
+  const start = parseFloat(getComputedStyle(el).fontSize) || 96;
+  let lo = FLOOR, hi = start, best = FLOOR;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    el.style.fontSize = mid + 'px';
+    if (fits()) { best = mid; lo = mid; } else { hi = mid; }
+  }
+  el.style.fontSize = best + 'px';
+  return { fitted: true, px: Math.round(best), floored: best <= FLOOR + 0.5 };
+})()`;
 
 /** In-page measurement script (self-invoking): detects overflow, tiny fonts, missing elements. */
 const MEASURE_FN = `(() => {
@@ -571,13 +838,35 @@ function resolveExecutablePath(): string | undefined {
   return undefined;
 }
 
-/** Render every slide of a post to PNG buffers at exactly 1080×1350. */
-export async function renderPost(post: Post, brand: Brand): Promise<RenderedSlide[]> {
+export interface RenderOptions {
+  /** Which slides to capture as animated MP4s. Defaults to 'off' (image-only). */
+  motion?: MotionMode;
+}
+
+/**
+ * Render every slide to a 1080×1350 PNG. Slides selected by `opts.motion` are
+ * additionally captured to a seamless H.264 MP4; their PNG is the poster frame.
+ */
+export async function renderPost(
+  post: Post,
+  brand: Brand,
+  opts: RenderOptions = {},
+): Promise<RenderedSlide[]> {
   const templateCss = await loadTemplateCss(post.template);
   const theme = resolveTheme(post);
-  log.info('theme resolved', { theme: theme.name, template: post.template });
+  const motionMode: MotionMode = opts.motion ?? 'off';
+  const animateFlags = post.slides.map((s, i) => shouldAnimate(s, i + 1, motionMode));
+  const anyMotion = animateFlags.some(Boolean);
+  const ffmpegPath = anyMotion ? resolveFfmpeg() : '';
+  log.info('theme resolved', {
+    theme: theme.name,
+    template: post.template,
+    motion: motionMode,
+    motionSlides: animateFlags.filter(Boolean).length,
+  });
   let browser: Browser | null = null;
   const out: RenderedSlide[] = [];
+  const clip = { width: SLIDE_WIDTH, height: SLIDE_HEIGHT };
   try {
     const launchOpts: LaunchOptions = {
       args: ['--no-sandbox', '--disable-dev-shm-usage', '--force-color-profile=srgb'],
@@ -592,29 +881,46 @@ export async function renderPost(post: Post, brand: Brand): Promise<RenderedSlid
     const total = post.slides.length;
     for (let i = 0; i < post.slides.length; i++) {
       const slide = post.slides[i]!;
-      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss, theme);
-      const page = await context.newPage();
-      await page.setViewportSize({ width: SLIDE_WIDTH, height: SLIDE_HEIGHT });
+      const animate = animateFlags[i]!;
+      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss, theme, animate);
+      const page: Page = await context.newPage();
+      await page.setViewportSize(clip);
       await page.setContent(html, { waitUntil: 'networkidle' });
-      const metrics = (await page.evaluate(MEASURE_FN)) as SlideMetrics;
-      const png = await page.screenshot({
-        type: 'png',
-        clip: { x: 0, y: 0, width: SLIDE_WIDTH, height: SLIDE_HEIGHT },
-      });
-      out.push({
-        index: i + 1,
-        type: slide.type,
-        png: Buffer.from(png),
-        width: SLIDE_WIDTH,
-        height: SLIDE_HEIGHT,
-        metrics,
-      });
+      await page.evaluate(AUTOFIT_FN);
+
+      if (animate) {
+        // Measure and capture from the settled t=0 frame.
+        await pauseAndReset(page);
+        const metrics = (await page.evaluate(MEASURE_FN)) as SlideMetrics;
+        const frames = await captureFrames(page, clip);
+        const mp4 = await encodeMp4(frames, ffmpegPath);
+        out.push({
+          index: i + 1,
+          type: slide.type,
+          png: frames[0]!,
+          mp4,
+          width: SLIDE_WIDTH,
+          height: SLIDE_HEIGHT,
+          metrics,
+        });
+      } else {
+        const metrics = (await page.evaluate(MEASURE_FN)) as SlideMetrics;
+        const png = await page.screenshot({ type: 'png', clip: { x: 0, y: 0, ...clip } });
+        out.push({
+          index: i + 1,
+          type: slide.type,
+          png: Buffer.from(png),
+          width: SLIDE_WIDTH,
+          height: SLIDE_HEIGHT,
+          metrics,
+        });
+      }
       await page.close();
     }
     await context.close();
   } finally {
     if (browser) await browser.close();
   }
-  log.info('rendered slides', { count: out.length });
+  log.info('rendered slides', { count: out.length, motion: out.filter((s) => s.mp4).length });
   return out;
 }

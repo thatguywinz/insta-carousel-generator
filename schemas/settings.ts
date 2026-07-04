@@ -14,6 +14,16 @@ export type Priority = z.infer<typeof PrioritySchema>;
 export const SourceSchema = z.enum(['Manual', 'Claude']);
 export type Source = z.infer<typeof SourceSchema>;
 
+/**
+ * Which slides render as animated MP4 ("moving") carousel items.
+ * - off       : image-only carousels.
+ * - cover     : only slide 1 (the hook) moves.
+ * - cover+key : slide 1 plus any slide the author flags `animate: true` (default).
+ * - all       : every slide moves (heaviest render).
+ */
+export const MotionSlidesSchema = z.enum(['off', 'cover', 'cover+key', 'all']);
+export type MotionSlides = z.infer<typeof MotionSlidesSchema>;
+
 /** Parse a sheet boolean cell tolerantly. Unknown/blank => false. */
 export function parseSheetBoolean(raw: string | undefined): boolean {
   if (!raw) return false;
@@ -38,6 +48,7 @@ export const SettingsSchema = z.object({
   MAX_SLIDES: z.number().int().min(3).max(20).default(8),
   PUBLISH_EXISTING_DRAFT_FIRST: z.boolean().default(true),
   AUTO_GENERATE_WHEN_EMPTY: z.boolean().default(true),
+  MOTION_SLIDES: MotionSlidesSchema.catch('cover+key'),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -74,6 +85,7 @@ export function parseSettings(raw: Record<string, string>): Settings {
       raw.PUBLISH_EXISTING_DRAFT_FIRST === undefined,
     AUTO_GENERATE_WHEN_EMPTY:
       parseSheetBoolean(raw.AUTO_GENERATE_WHEN_EMPTY) || raw.AUTO_GENERATE_WHEN_EMPTY === undefined,
+    MOTION_SLIDES: (raw.MOTION_SLIDES ?? '').trim().toLowerCase(),
   });
 
   // Guard against inverted slide bounds.

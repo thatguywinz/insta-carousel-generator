@@ -1,0 +1,118 @@
+/* breaking-news — scroll-stopping newsroom look: chyron kicker, oversized hook,
+   bold stat callouts. Pairs naturally with the `breaking` theme but reads on any. */
+
+.slide-cover .content.cover {
+  justify-content: flex-end;
+  gap: 30px;
+  padding-bottom: 60px;
+}
+
+/* Chyron / lower-third banner instead of a quiet pill. */
+.content.cover .kicker {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 16px;
+  margin-bottom: 4px;
+  padding: 16px 28px;
+  border-radius: 8px;
+  background: var(--c-secondary);
+  color: #fff;
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: 4px;
+}
+.content.cover .kicker::before {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 6px color-mix(in srgb, #fff 30%, transparent);
+}
+
+.slide-cover .headline {
+  font-size: 104px;
+  font-weight: 900;
+  letter-spacing: -2.5px;
+  line-height: 0.98;
+}
+.slide-cover .headline::after {
+  content: '';
+  display: block;
+  width: 240px;
+  height: 16px;
+  border-radius: 8px;
+  margin-top: 36px;
+  background: linear-gradient(90deg, var(--c-secondary), var(--c-accent));
+}
+
+.swipe {
+  display: inline-flex;
+  align-self: flex-start;
+  margin-top: 12px;
+  padding: 18px 40px;
+  border-radius: 999px;
+  background: var(--c-secondary);
+  color: #fff;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+
+/* Numbered / step: bold square number chips. */
+.numbered .row {
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  margin-bottom: 22px;
+}
+.numbered .badge {
+  border-radius: 14px;
+  background: var(--c-secondary);
+  color: #fff;
+}
+.numbered .headline.small {
+  font-size: 62px;
+  font-weight: 800;
+}
+.numbered .body {
+  padding-left: 28px;
+  border-left: 6px solid var(--c-secondary);
+}
+
+/* Non-cover headlines get an accent kicker bar for a consistent newsroom rhythm. */
+.content:not(.cover) .kicker {
+  color: var(--c-ink-accent);
+  font-weight: 800;
+}
+
+.checks {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.checks li {
+  display: flex;
+  gap: 20px;
+  font-size: 36px;
+  line-height: 1.35;
+  align-items: flex-start;
+}
+.check {
+  color: var(--c-ink-accent);
+  font-weight: 900;
+}
+
+.cta-pill {
+  align-self: flex-start;
+  margin-top: 24px;
+  padding: 22px 46px;
+  border-radius: 999px;
+  background: var(--c-secondary);
+  color: #fff;
+  font-size: 38px;
+  font-weight: 900;
+  letter-spacing: 0.5px;
+}

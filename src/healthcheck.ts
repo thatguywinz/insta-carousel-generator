@@ -4,6 +4,7 @@ import { SheetContext, verifyTabs, verifyContentHeaders, readSettings } from './
 import { createR2, putPrivateJson, getPrivateJson, deletePrivate } from './r2.js';
 import { createIgClient, validateCredentials } from './instagram.js';
 import { loadActiveToken } from './token-manager.js';
+import { resolveFfmpeg, ffmpegHasH264 } from './motion.js';
 import { log } from './logger.js';
 import { sanitizeError } from './security.js';
 
@@ -43,6 +44,7 @@ export async function runHealthcheck(cfg: AppConfig): Promise<HealthReport> {
 
   // 2. Google Sheet: auth, tabs, headers, settings.
   let mode = 'TEST';
+  let motionSlides = 'off';
   try {
     const client = await createSheetsClient(cfg.googleServiceAccountB64, cfg.googleSheetId);
     const ctx: SheetContext = { client, timezone: cfg.timezone };
@@ -50,10 +52,11 @@ export async function runHealthcheck(cfg: AppConfig): Promise<HealthReport> {
     await verifyContentHeaders(ctx);
     const settings = await readSettings(ctx);
     mode = settings.MODE;
+    motionSlides = settings.MOTION_SLIDES;
     checks.push({
       name: 'google-sheet',
       ok: true,
-      detail: `tabs+headers valid, MODE=${settings.MODE}, niche="${settings.NICHE.slice(0, 40)}"`,
+      detail: `tabs+headers valid, MODE=${settings.MODE}, MOTION_SLIDES=${settings.MOTION_SLIDES}, niche="${settings.NICHE.slice(0, 40)}"`,
     });
   } catch (err) {
     checks.push({ name: 'google-sheet', ok: false, detail: sanitizeError(err) });
@@ -121,6 +124,26 @@ export async function runHealthcheck(cfg: AppConfig): Promise<HealthReport> {
       ok: false,
       detail: `not configured (missing: ${cfg.missingInstagram.join(', ') || 'INSTAGRAM_*'})`,
     });
+  }
+
+  // 6. Motion encoder: an ffmpeg with libx264 is required to encode MP4s when
+  // MOTION_SLIDES != off. Fails loudly here rather than at render time.
+  if (motionSlides !== 'off') {
+    try {
+      const bin = resolveFfmpeg();
+      const hasH264 = await ffmpegHasH264(bin);
+      checks.push({
+        name: 'motion-ffmpeg',
+        ok: hasH264,
+        detail: hasH264
+          ? `ffmpeg with libx264 available (MOTION_SLIDES=${motionSlides})`
+          : 'resolved ffmpeg lacks libx264 — motion cannot encode; set FFMPEG_PATH or ensure @ffmpeg-installer/ffmpeg installed',
+      });
+    } catch (err) {
+      checks.push({ name: 'motion-ffmpeg', ok: false, detail: sanitizeError(err) });
+    }
+  } else {
+    checks.push({ name: 'motion-ffmpeg', ok: true, detail: 'MOTION_SLIDES=off (image-only)' });
   }
 
   // Determine overall health. In TEST mode, Instagram may be the only failure.

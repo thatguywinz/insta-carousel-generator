@@ -1,7 +1,7 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig } from './config.js';
+import { loadConfig, instagramConfigured } from './config.js';
 import { log } from './logger.js';
 import { sanitizeError } from './security.js';
 import { runHealthcheck } from './healthcheck.js';
@@ -19,6 +19,16 @@ import { loadBrand, renderPost } from './render.js';
 import { validateAll } from './visual-validation.js';
 import { PostSchema, Post } from '../schemas/post.js';
 import { GeneratedIdeaInput } from './idea-selection.js';
+import { createR2, putPublic, headPublic, verifyPublicUrl } from './r2.js';
+import { loadActiveToken, refreshTokenIfNeeded } from './token-manager.js';
+import {
+  createIgClient,
+  validateCredentials,
+  createVideoChildContainer,
+  getContainerStatus,
+  pollUntilReady,
+  defaultHttp,
+} from './instagram.js';
 
 /**
  * CLI entry point. The creative seams (authoring the carousel / new idea and
@@ -78,10 +88,10 @@ function fileProviders(): WorkflowProviders {
       // an approval file the operator writes after inspection.
       await mkdir(path.join(RUNTIME, 'slides'), { recursive: true });
       for (const s of slides) {
-        await writeFile(
-          path.join(RUNTIME, 'slides', `slide-${String(s.index).padStart(2, '0')}.png`),
-          s.png,
-        );
+        const base = `slide-${String(s.index).padStart(2, '0')}`;
+        await writeFile(path.join(RUNTIME, 'slides', `${base}.png`), s.png);
+        // Motion slides also emit the MP4 so inspection sees the movement.
+        if (s.mp4) await writeFile(path.join(RUNTIME, 'slides', `${base}.mp4`), s.mp4);
       }
       const approval = await readJsonIfExists<{ approved: boolean; notes?: string }>(
         path.join(RUNTIME, 'visual-approval.json'),
@@ -195,13 +205,14 @@ async function cmdRender(): Promise<number> {
   const ctx: SheetContext = { client, timezone: cfg.timezone };
   const settings = await readSettings(ctx);
   const brand = await loadBrand(settings);
-  const slides = await renderPost(post, brand);
+  const slides = await renderPost(post, brand, { motion: settings.MOTION_SLIDES });
   await mkdir(path.join(RUNTIME, 'slides'), { recursive: true });
   for (const s of slides) {
-    await writeFile(
-      path.join(RUNTIME, 'slides', `slide-${String(s.index).padStart(2, '0')}.png`),
-      s.png,
-    );
+    const base = `slide-${String(s.index).padStart(2, '0')}`;
+    await writeFile(path.join(RUNTIME, 'slides', `${base}.png`), s.png);
+    // Animated slides also emit an MP4 so the mandatory visual inspection sees
+    // the motion, not just the poster still.
+    if (s.mp4) await writeFile(path.join(RUNTIME, 'slides', `${base}.mp4`), s.mp4);
   }
   const report = await validateAll(post, slides, settings);
   await writeFile(
@@ -257,6 +268,102 @@ async function cmdRecover(): Promise<number> {
   return 0;
 }
 
+/**
+ * Non-publishing motion dry-run. Encodes a sample MP4, uploads it, and creates a
+ * single VIDEO carousel-item container against the REAL Instagram API, polling to
+ * FINISHED — but NEVER creates a parent carousel or publishes (a parent needs >=2
+ * children and would post). This validates that Instagram accepts our exact MP4
+ * spec before any live motion carousel. Uses the encrypted token from private R2.
+ */
+async function cmdVerifyMotion(): Promise<number> {
+  const cfg = loadConfig();
+  if (!instagramConfigured(cfg)) {
+    console.error(
+      `verify:motion needs Instagram configured (missing: ${cfg.missingInstagram.join(', ') || 'INSTAGRAM_*'}). ` +
+        'Run this in the environment that holds the account credentials.',
+    );
+    return 1;
+  }
+
+  const client = await createSheetsClient(cfg.googleServiceAccountB64, cfg.googleSheetId).catch(
+    () => null,
+  );
+  const settings = client
+    ? await readSettings({ client, timezone: cfg.timezone })
+    : (await import('../schemas/settings.js')).parseSettings({});
+  const brand = await loadBrand(settings);
+
+  // Minimal one-motion-slide post; render just the animated cover to an MP4.
+  const post = PostSchema.parse({
+    idea_id: 'verify-motion',
+    idea: 'Motion publish-path verification',
+    hook: 'Confirming Instagram accepts our motion MP4 spec',
+    content_pillar: 'internal',
+    template: 'numbered-list',
+    slides: [
+      {
+        type: 'cover',
+        kicker: 'Dry run',
+        headline: 'Motion spec check',
+        body: 'No post is created.',
+      },
+      {
+        type: 'summary',
+        headline: 'Container only',
+        body: 'This validates encoding + acceptance.',
+      },
+      { type: 'cta', headline: 'Safe', body: 'A parent carousel is never assembled.' },
+    ],
+    caption: 'verify:motion dry run',
+    hashtags: [],
+    generated_at: new Date().toISOString(),
+    idempotency_key: 'verify-motion',
+  });
+
+  const slides = await renderPost(post, brand, { motion: 'cover' });
+  const motion = slides.find((s) => s.mp4);
+  if (!motion || !motion.mp4) {
+    console.error('verify:motion: renderer produced no MP4 (is ffmpeg with libx264 available?).');
+    return 1;
+  }
+  console.log(`Encoded sample MP4: ${motion.mp4.length} bytes.`);
+
+  const r2 = createR2(cfg);
+  const key = `carousels/verify-motion/dryrun-${Date.now()}.mp4`;
+  const url = await putPublic(r2, key, motion.mp4, { contentType: 'video/mp4' });
+  const head = await headPublic(r2, key);
+  const reach = await verifyPublicUrl(url);
+  if (!reach.ok) {
+    console.error(`Uploaded MP4 not publicly reachable (status ${reach.status}): ${url}`);
+    return 1;
+  }
+  console.log(`Uploaded + reachable: ${url} (content-type ${head?.contentType ?? '?'}).`);
+
+  const active = await loadActiveToken(r2, cfg);
+  if (!active) {
+    console.error('No Instagram token available (expected an encrypted token in private R2).');
+    return 1;
+  }
+  const refresh = await refreshTokenIfNeeded(r2, cfg, active, {
+    httpGet: async (u) => defaultHttp.get(u),
+  });
+  const ig = createIgClient(cfg, refresh.token.token, cfg.instagram.userId!, defaultHttp);
+  const cred = await validateCredentials(ig);
+  if (!cred.ok) {
+    console.error(`Instagram credential invalid: ${cred.reason}`);
+    return 1;
+  }
+
+  console.log('Creating VIDEO carousel-item container (no parent, no publish)…');
+  const childId = await createVideoChildContainer(ig, url);
+  console.log(`Container created: ${childId}. Polling to FINISHED…`);
+  await pollUntilReady(ig, childId, { maxAttempts: 30, baseDelayMs: 4000 });
+  const status = await getContainerStatus(ig, childId);
+  console.log(`\n✓ verify:motion PASSED — container ${childId} reached ${status}.`);
+  console.log('  No carousel parent was created and nothing was published.');
+  return 0;
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2] ?? 'workflow';
   log.info(`cli command: ${command}`);
@@ -283,6 +390,10 @@ async function main(): Promise<void> {
       case 'recover':
       case 'verify-publication':
         code = await cmdRecover();
+        break;
+      case 'verify:motion':
+      case 'verify-motion':
+        code = await cmdVerifyMotion();
         break;
       default:
         console.error(`Unknown command: ${command}`);

@@ -81,20 +81,60 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
 - The workflow overrides `idea_id` and `idempotency_key`; your `post-plan.json`
   values for those are placeholders.
 
+### Hook playbook (the cover is the whole game)
+
+The first slide's `headline` is the scroll-stopper — write it like a viral AI-news
+account, not a textbook. Pick a proven pattern and keep it concrete:
+
+- **Concrete number / result** — "GPT-4 beaten by a 7B open model on coding".
+- **"X just changed"** — "Claude Code just got parallel subagents".
+- **Contrarian** — "Everyone's wrong about long context. Here's the data."
+- **Curiosity gap** — "The one setting that doubled our agent's success rate".
+- **Direct callout** — "If you use ChatGPT for code, read this."
+
+Rules: ≤ ~10 words, front-load the payoff, no unmet clickbait, and never fabricate
+the number/claim (source volatile facts in `post.sources`). Auto-fit shrinks a bold
+cover headline to fit (floor ~56px); if it still overflows, **shorten the copy** —
+don't accept a tiny hook. Avoid the phrases blocklisted in `src/visual-validation.ts`.
+
 ### Content direction & theming
 
-- This account covers **Claude / Claude Code, OpenAI / Codex, and new AI tool +
-  tech news**. Keep content timely and accurate.
+- This account covers **Claude / Claude Code, OpenAI / Codex, Gemini, Grok, Meta
+  AI / Llama, Mistral, and new AI tool + tech news**. Keep content timely and
+  accurate.
 - For topics that need current facts (new releases, version numbers, dates,
   benchmarks), **research primary sources** and put the URLs in `post.sources`.
   Never invent version numbers, dates, or benchmark stats.
-- Set the carousel's `theme` (`claude` / `openai` / `default`) in
-  `post-plan.json` to match the subject so the right brand colors + logo apply.
-  When unset, the renderer auto-detects the theme from the idea/pillar text
-  (`detectTheme` in `src/render.ts`).
+- Set the carousel's `theme` in `post-plan.json` to match the subject so the right
+  brand colors + logo apply. Themes: `claude`, `openai`, `gemini`, `grok`, `meta`,
+  `mistral`, `breaking` (generic high-attention AI-news look for vendorless
+  stories), `default`. When unset, the renderer auto-detects from the idea/pillar
+  text (`detectTheme` in `src/render.ts`).
+- Templates: `numbered-list`, `step-by-step`, `myth-reality`, `mistake-solution`,
+  `comparison`, `checklist`, and `breaking-news` (a newsroom chyron + oversized
+  hook — pairs well with the `breaking` theme for scroll-stopping news posts).
 - Visual inspection must **reject bland output**: every slide should show the
   themed background gradient and a graphic accent, and the cover must carry the
   theme's logo mark — not plain text on a flat background.
+
+### Motion (moving carousels)
+
+- The `MOTION_SLIDES` Setting controls animated (MP4) slides: `off` (image-only),
+  `cover` (slide 1 moves), `cover+key` (**default** — cover + any slide flagged
+  `animate: true`), `all`. Instagram carousels mix image + video children, so
+  motion slides publish as `media_type=VIDEO` alongside static image slides.
+- Motion is captured deterministically (CSS `@keyframes` → frame-stepped
+  screenshots → H.264 MP4 via `src/motion.ts`) and every motion slide still emits
+  a poster PNG (its settled t=0 frame) for inspection and the grid thumbnail.
+- **Authoring for motion:** all animation is "settled at t=0" (drift/shimmer/glow
+  on already-visible elements) so the first frame is a strong still and the
+  overflow check passes. You don't hand-write animations — they're baked into the
+  theme/template CSS; you only choose which slides move via `MOTION_SLIDES` /
+  `animate`.
+- **Before the first LIVE motion post**, run `npm run verify:motion` — it creates
+  and polls a real VIDEO container (no parent, no publish) to confirm Instagram
+  accepts the MP4 spec. Requires a full `ffmpeg` with libx264 (bundled via
+  `@ffmpeg-installer/ffmpeg`; `npm run healthcheck` verifies it when motion is on).
 
 ### Visual inspection is mandatory
 
@@ -152,7 +192,7 @@ below the accessible minimum. Only write `visual-approval.json` once it passes.
 
 `npm run build | typecheck | lint | test | healthcheck | workflow |
 workflow:test | select-idea | render | render:fixture | recover |
-verify:publication`
+verify:publication | verify:motion`
 
 Before committing: format, typecheck, run tests, inspect `git diff`, scan for
 secrets, confirm no service-account/token/private-state files are tracked.

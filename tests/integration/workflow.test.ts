@@ -86,11 +86,14 @@ const H = vi.hoisted(() => {
     header: [] as string[],
     data: [] as string[][],
   };
-  return { fakeR2, grid, store };
+  // When true, the render mock attaches a fake MP4 to slide 1 (motion).
+  const flags = { motion: false };
+  return { fakeR2, grid, store, flags };
 });
 
 const fakeR2 = H.fakeR2;
 const grid = H.grid;
+const flags = H.flags;
 
 vi.mock('../../src/google-sheets.js', () => {
   return {
@@ -135,13 +138,16 @@ vi.mock('../../src/r2.js', async (importActual) => {
   return {
     ...actual,
     createR2: () => H.fakeR2,
-    verifyPublicUrl: async () => ({
+    verifyPublicUrl: async (url: string) => ({
       ok: true,
       status: 200,
-      contentType: 'image/png',
+      contentType: url.endsWith('.mp4') ? 'video/mp4' : 'image/png',
       contentLength: 12345,
     }),
-    headPublic: async () => ({ contentType: 'image/png', contentLength: 12345 }),
+    headPublic: async (_r: unknown, key: string) => ({
+      contentType: key.endsWith('.mp4') ? 'video/mp4' : 'image/png',
+      contentLength: 12345,
+    }),
   };
 });
 
@@ -191,7 +197,23 @@ vi.mock('../../src/render.js', async (importActual) => {
           ])
           .png()
           .toBuffer();
-        out.push({ index: i + 1, type: 'cover', png, width: W, height: Hh, metrics: goodMetrics });
+        const slide: Record<string, unknown> = {
+          index: i + 1,
+          type: 'cover',
+          png,
+          width: W,
+          height: Hh,
+          metrics: goodMetrics,
+        };
+        // Motion: attach a structurally-valid fake MP4 to slide 1.
+        if (H.flags.motion && i === 0) {
+          slide.mp4 = Buffer.concat([
+            Buffer.from([0, 0, 0, 0x18]),
+            Buffer.from('ftyp'),
+            Buffer.alloc(4000),
+          ]);
+        }
+        out.push(slide);
       }
       return out;
     },
@@ -263,6 +285,7 @@ beforeEach(() => {
   grid.header = [...HEADERS];
   grid.data = [];
   fakeR2.store.clear();
+  flags.motion = false;
 });
 
 function setSettings(mode: string, extra: Record<string, string> = {}): void {
@@ -417,6 +440,85 @@ describe('workflow LIVE mode', () => {
     expect(result.lockReleased).toBe(true);
     const statusCol = HEADERS.indexOf('status');
     expect(grid.data[0]![statusCol]).toBe('POSTED');
+  });
+
+  it('publishes a MOTION carousel: video child + slideMedia manifest', async () => {
+    setSettings('LIVE', { PUBLISH_EXISTING_DRAFT_FIRST: 'FALSE', MOTION_SLIDES: 'cover' });
+    flags.motion = true;
+    grid.data = [
+      [
+        '',
+        'Claude just shipped subagents',
+        'High',
+        'Manual',
+        'UNUSED',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+      ],
+    ];
+
+    let childCount = 0;
+    let videoChildren = 0;
+    const http = {
+      async get(url: string) {
+        if (url.includes('?fields=id,username'))
+          return { status: 200, json: { id: '123', username: 'test' } };
+        if (url.includes('content_publishing_limit'))
+          return { status: 200, json: { data: [{ quota_usage: 1, config: { quota_total: 50 } }] } };
+        if (url.includes('?fields=status_code'))
+          return { status: 200, json: { status_code: 'FINISHED' } };
+        if (url.match(/\/\d+_?\d*\?fields=id,permalink/) || url.includes('permalink'))
+          return {
+            status: 200,
+            json: { permalink: 'https://instagram.com/p/xyz', owner: { id: '123' } },
+          };
+        return { status: 200, json: {} };
+      },
+      async post(url: string, body?: Record<string, unknown>) {
+        if (url.includes('/media_publish')) return { status: 200, json: { id: 'media-motion-1' } };
+        if (url.includes('/media')) {
+          childCount++;
+          if (body?.media_type === 'VIDEO' && body?.video_url) videoChildren++;
+          return { status: 200, json: { id: `container-${childCount}` } };
+        }
+        return { status: 200, json: {} };
+      },
+    };
+
+    const result = await runWorkflow({
+      cfg: cfg('LIVE'),
+      http,
+      providers: {
+        authorPost: async (ctx) => ({ ...fixturePost, idea_id: ctx.ideaId }),
+        inspectVisuals: async () => ({ approved: true, notes: 'ok' }),
+      },
+    });
+
+    expect(result.status).toBe('POSTED');
+    expect(result.mediaId).toBe('media-motion-1');
+    // Slide 1 was published as a VIDEO carousel child.
+    expect(videoChildren).toBe(1);
+    // The persisted manifest carries per-item media descriptors, slide 1 = VIDEO.
+    const manifestRaw = fakeR2.store.get(`private-test//manifests/${result.ideaId}.json`);
+    expect(manifestRaw).toBeTruthy();
+    const manifest = JSON.parse(manifestRaw!.body.toString('utf8'));
+    expect(manifest.slideMedia[0].type).toBe('VIDEO');
+    expect(manifest.slideMedia[0].posterUrl).toContain('.png');
+    expect(manifest.slideMedia[1].type).toBe('IMAGE');
+    // A poster .png and the .mp4 were both uploaded to the public bucket.
+    const publicKeys = [...fakeR2.store.keys()].filter((k) => k.startsWith('public-test//'));
+    expect(publicKeys.some((k) => k.endsWith('slide-01.mp4'))).toBe(true);
+    expect(publicKeys.some((k) => k.endsWith('slide-01.png'))).toBe(true);
   });
 
   it('marks VERIFY_REQUIRED on ambiguous publish failure', async () => {

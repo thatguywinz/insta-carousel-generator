@@ -23,10 +23,12 @@
     "render": "tsx src/cli.ts render",
     "render:fixture": "tsx src/cli.ts render-fixture",
     "recover": "tsx src/cli.ts recover",
-    "verify:publication": "tsx src/cli.ts verify-publication"
+    "verify:publication": "tsx src/cli.ts verify-publication",
+    "verify:motion": "tsx src/cli.ts verify:motion"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.658.1",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "googleapis": "^144.0.0",
     "luxon": "^3.5.0",
     "playwright": "^1.48.0",

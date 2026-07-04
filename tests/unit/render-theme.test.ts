@@ -49,6 +49,48 @@ describe('theme detection', () => {
     expect(detectTheme({ content_pillar: 'Egypt travel', idea: 'sightseeing' })).toBe('default');
   });
 
+  it('detects the expanded AI-brand themes', () => {
+    expect(detectTheme({ content_pillar: 'News', idea: 'Gemini 2 doubles context' })).toBe(
+      'gemini',
+    );
+    expect(detectTheme({ content_pillar: 'News', idea: 'Grok gains live search' })).toBe('grok');
+    expect(detectTheme({ content_pillar: 'News', idea: 'Llama 4 released by Meta AI' })).toBe(
+      'meta',
+    );
+    expect(detectTheme({ content_pillar: 'News', idea: 'Mistral ships Mixtral update' })).toBe(
+      'mistral',
+    );
+  });
+
+  it('uses the generic breaking theme for vendorless attention hooks', () => {
+    expect(detectTheme({ content_pillar: 'AI', idea: 'Breaking: a new model just dropped' })).toBe(
+      'breaking',
+    );
+    // A named vendor still wins over the generic breaking keyword.
+    expect(detectTheme({ content_pillar: 'AI', idea: 'Breaking: Claude just shipped X' })).toBe(
+      'claude',
+    );
+    // "meta" must not fire inside unrelated words like "metadata".
+    expect(detectTheme({ content_pillar: 'Data', idea: 'metadata best practices' })).toBe(
+      'default',
+    );
+  });
+
+  it('resolves each themed subject to a mark + label', () => {
+    for (const [idea, name, label] of [
+      ['Gemini update', 'gemini', 'Gemini'],
+      ['Grok update', 'grok', 'Grok'],
+      ['Meta AI Llama', 'meta', 'Meta AI'],
+      ['Mistral update', 'mistral', 'Mistral'],
+      ['Breaking news dropped', 'breaking', 'AI News'],
+    ] as const) {
+      const theme = resolveTheme({ content_pillar: 'x', idea });
+      expect(theme.name).toBe(name);
+      expect(theme.label).toBe(label);
+      expect(theme.logo).toMatch(/^data:image\/svg\+xml;base64,/);
+    }
+  });
+
   it('claude wins when both subjects appear', () => {
     expect(detectTheme({ content_pillar: 'AI', idea: 'Claude vs ChatGPT compared' })).toBe(
       'claude',

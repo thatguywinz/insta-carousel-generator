@@ -59,8 +59,17 @@ Three tabs, never renamed: `Instructions`, `Settings`, `Content`.
 `TARGET_AUDIENCE`, `ACCOUNT_GOAL`, `BRAND_NAME`, `INSTAGRAM_HANDLE`,
 `BRAND_COLORS`, `BRAND_STYLE`, `CONTENT_PILLARS`, `DEFAULT_CTA`, `POST_LANGUAGE`,
 `LOOKBACK_DAYS`, `MIN_SLIDES`, `MAX_SLIDES`, `PUBLISH_EXISTING_DRAFT_FIRST`,
-`AUTO_GENERATE_WHEN_EMPTY`. `MODE` defaults safely to `TEST` when missing or
-unknown.
+`AUTO_GENERATE_WHEN_EMPTY`, `MOTION_SLIDES`. `MODE` defaults safely to `TEST` when
+missing or unknown.
+
+- **`MOTION_SLIDES`** — animated (MP4) carousel slides: `off` (image-only),
+  `cover` (slide 1 animates), `cover+key` (**default** — cover + any slide flagged
+  `animate: true`), `all`. Motion slides publish as video children mixed with
+  image slides. Requires a full `ffmpeg` with libx264 (bundled via
+  `@ffmpeg-installer/ffmpeg`); `npm run healthcheck` verifies it when motion is on.
+  Set `off` to disable. Before enabling motion in **LIVE**, validate the publish
+  path once with `npm run verify:motion` (creates + polls a real video container
+  without posting).
 
 **`Content`** has exactly these columns, in order:
 `idea_id, idea, priority, source, status, added_at, selected_at, hook,
