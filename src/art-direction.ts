@@ -49,14 +49,19 @@ export const MOTION_KEYFRAMES = `
   @keyframes hl-glow { 0%,100%{text-shadow:0 0 0 color-mix(in srgb, var(--c-accent) 0%, transparent)} 50%{text-shadow:0 0 40px color-mix(in srgb, var(--c-accent) 55%, transparent)} }
   @keyframes kicker-pulse { 0%,100%{opacity:.78} 50%{opacity:1} }
   @keyframes swipe-bob { 0%,100%{transform:translateX(0);opacity:.72} 50%{transform:translateX(16px);opacity:1} }
-  /* One-directional light sweep; fully off-canvas at both ends → seamless. */
-  @keyframes ad-sweep { from{transform:translateX(-70%) rotate(var(--sweep-rot,0deg))} to{transform:translateX(220%) rotate(var(--sweep-rot,0deg))} }
-  /* Vertical scan line; off-canvas at both ends → seamless. */
-  @keyframes ad-scan { from{transform:translateY(-60%)} to{transform:translateY(210%)} }
+  /* One-directional light sweep; the bar (≤50% wide, ~-14% start) is fully
+     off-canvas at BOTH ends (-100% → 280% of its own width) so the loop
+     restart is an invisible teleport, not a pop. */
+  @keyframes ad-sweep { from{transform:translateX(-100%)} to{transform:translateX(280%)} }
+  /* Vertical scan line in px (translateY% is relative to the element's own
+     height, useless for a 3px line). The element sits at top:0; -60px→1380px
+     clears above the top and below the 1350px bottom at both ends. */
+  @keyframes ad-scan { from{transform:translateY(-60px)} to{transform:translateY(1380px)} }
   @keyframes ad-breathe { 0%,100%{transform:scale(1);opacity:.72} 50%{transform:scale(1.14);opacity:1} }
   @keyframes ad-drift { 0%,100%{transform:translate(0,0)} 50%{transform:translate(0,-26px)} }
-  /* Tiled-pattern crawl: moving by exactly one tile returns identical. */
-  @keyframes ad-crawl { from{background-position:0 0} to{background-position:0 -48px} }
+  /* Tiled-pattern crawl: shift by exactly one tile (per-element --crawl) so the
+     pattern returns to itself at the seam. Default matches a 60px grid. */
+  @keyframes ad-crawl { from{background-position:0 0} to{background-position:0 var(--crawl,-60px)} }
   @keyframes ad-blink { 0%,45%{opacity:1} 50%,95%{opacity:.15} 100%{opacity:1} }
 `;
 
@@ -93,7 +98,7 @@ function editorial(): ResolvedArtDirection {
     ${S} .kicker { font-family: var(--font-mono); font-weight: 500; font-size: 26px; letter-spacing: 6px; color: var(--c-muted); background: none; padding: 0; }
     ${S} .decor-1 { inset: 40px; border: 2px solid color-mix(in srgb, var(--c-text) 22%, transparent); }
     ${S} .decor-2 { top: 0; bottom: 0; width: 46%; left: -10%; ${sweepBar()} opacity: .5; }
-    ${S} .decor-3 { inset: 0; background: ${GRAIN}; background-size: 140px 140px; opacity: .05; mix-blend-mode: multiply; }
+    ${S} .decor-3 { inset: 0; --crawl: -140px; background: ${GRAIN}; background-size: 140px 140px; opacity: .05; mix-blend-mode: multiply; }
     ${S}.slide-cover .content.cover { justify-content: center; gap: 34px; }
     ${S}.slide-cover .headline { font-size: 112px; line-height: 1.0; }
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 132px; height: 4px; margin-top: 40px; background: var(--c-accent); }
@@ -101,10 +106,10 @@ function editorial(): ResolvedArtDirection {
     ${S} .headline.small { font-size: 60px; }
     `,
     motionCss: `
-      ${S}.slide.motion .decor-2 { animation: ad-sweep 3s ease-in-out infinite; }
+      ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
       ${S}.slide.motion .decor-3 { animation: ad-crawl 2s steps(6) infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
-      ${S}.slide.motion .swipe { animation: swipe-bob 1.5s ease-in-out infinite; }
+      ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
 }
@@ -117,7 +122,7 @@ function brutalist(): ResolvedArtDirection {
     name: 'brutalist',
     css: `
     ${S} { --g-bg: var(--c-bg); }
-    ${S} .decor-1 { inset: 0; opacity: .5;
+    ${S} .decor-1 { inset: 0; opacity: .5; --crawl: -120px;
       background:
         linear-gradient(color-mix(in srgb, var(--c-text) 8%, transparent) 2px, transparent 2px) 0 0 / 100% 120px,
         linear-gradient(90deg, color-mix(in srgb, var(--c-text) 8%, transparent) 2px, transparent 2px) 0 0 / 120px 100%; }
@@ -134,10 +139,10 @@ function brutalist(): ResolvedArtDirection {
     ${S} .headline.small { font-size: 56px; }
     `,
     motionCss: `
-      ${S}.slide.motion .decor-1 { animation: ad-crawl 2s steps(8) infinite; }
+      ${S}.slide.motion .decor-1 { animation: ad-crawl 2s linear infinite; }
       ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
-      ${S}.slide.motion .decor-3 { animation: ad-blink 2s steps(1) infinite; }
-      ${S}.slide.motion .kicker { animation: kicker-pulse 1s steps(2) infinite; }
+      ${S}.slide.motion .decor-3 { animation: ad-blink 2s infinite; }
+      ${S}.slide.motion .kicker { animation: ad-blink 1s infinite; }
     `,
   };
 }
@@ -171,11 +176,11 @@ function spotlight(): ResolvedArtDirection {
     ${S} .headline.small { font-size: 60px; }
     `,
     motionCss: `
-      ${S}.slide.motion .decor-1 { animation: ad-breathe 2.5s ease-in-out infinite; transform-origin: 50% 40%; }
-      ${S}.slide.motion .decor-2 { animation: ad-sweep 3s ease-in-out infinite; }
-      ${S}.slide.motion .decor-3 { animation: ad-drift 2.5s ease-in-out infinite; }
-      ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2.5s ease-in-out infinite; }
-      ${S}.slide.motion .swipe { animation: swipe-bob 1.5s ease-in-out infinite; }
+      ${S}.slide.motion .decor-1 { animation: ad-breathe 2s ease-in-out infinite; transform-origin: 50% 40%; }
+      ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
+      ${S}.slide.motion .decor-3 { animation: ad-drift 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+      ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
 }
@@ -204,7 +209,7 @@ function kinetic(): ResolvedArtDirection {
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: blob-a 2s ease-in-out infinite; }
-      ${S}.slide.motion .decor-2 { animation: ad-sweep 2s ease-in-out infinite; }
+      ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
       ${S}.slide.motion .kicker { animation: kicker-pulse 2s ease-in-out infinite; }
     `,
@@ -224,7 +229,7 @@ function blueprint(): ResolvedArtDirection {
       background:
         linear-gradient(color-mix(in srgb, var(--c-accent) 12%, transparent) 1px, transparent 1px) 0 0 / 100% 60px,
         linear-gradient(90deg, color-mix(in srgb, var(--c-accent) 12%, transparent) 1px, transparent 1px) 0 0 / 60px 100%; }
-    ${S} .decor-2 { left: 40px; right: 40px; height: 3px; top: 120px; ${sweepBar()} opacity: .7; }
+    ${S} .decor-2 { left: 40px; right: 40px; height: 3px; top: 0; ${sweepBar()} opacity: .7; }
     ${S} .decor-3 { inset: 40px; border: 2px solid color-mix(in srgb, var(--c-accent) 40%, transparent);
       background:
         linear-gradient(var(--c-accent), var(--c-accent)) 0 0 / 40px 2px no-repeat,
@@ -243,9 +248,9 @@ function blueprint(): ResolvedArtDirection {
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: ad-crawl 2s linear infinite; }
-      ${S}.slide.motion .decor-2 { animation: ad-scan 2.5s ease-in-out infinite; }
-      ${S}.slide.motion .decor-3 { animation: ad-blink 2s ease-in-out infinite; }
-      ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2.5s ease-in-out infinite; }
+      ${S}.slide.motion .decor-2 { animation: ad-scan 2s linear infinite; }
+      ${S}.slide.motion .decor-3 { animation: kicker-pulse 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
     `,
   };
 }
@@ -272,11 +277,11 @@ function poster(): ResolvedArtDirection {
     ${S} .headline.small { font-size: 62px; text-transform: uppercase; letter-spacing: -1.5px; }
     `,
     motionCss: `
-      ${S}.slide.motion .decor-1 { animation: ad-drift 2.5s ease-in-out infinite; }
-      ${S}.slide.motion .decor-2 { animation: blob-b 2.5s ease-in-out infinite; }
-      ${S}.slide.motion .decor-3 { animation: ad-blink 2s ease-in-out infinite; }
+      ${S}.slide.motion .decor-1 { animation: ad-drift 2s ease-in-out infinite; }
+      ${S}.slide.motion .decor-2 { animation: blob-b 2s ease-in-out infinite; }
+      ${S}.slide.motion .decor-3 { animation: kicker-pulse 2s ease-in-out infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
-      ${S}.slide.motion .swipe { animation: swipe-bob 1.5s ease-in-out infinite; }
+      ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
 }

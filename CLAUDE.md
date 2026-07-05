@@ -69,7 +69,7 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
 ### Authoring rules (must follow)
 
 - **Value first, even for news.** Every carousel must leave the reader with
-  something they can *use* — a takeaway, a workflow, a "what this means for you",
+  something they can _use_ — a takeaway, a workflow, a "what this means for you",
   not just "X happened". Report the news, then make it actionable. Match `NICHE`,
   `TARGET_AUDIENCE`, `ACCOUNT_GOAL`, `POST_LANGUAGE`.
 - 5–8 slides normally, within `MIN_SLIDES`..`MAX_SLIDES`. First slide `cover`;
@@ -126,30 +126,33 @@ someone who just got value thinks "yes, I want the next one".
 - For topics that need current facts (new releases, version numbers, dates,
   benchmarks), **research primary sources** and put the URLs in `post.sources`.
   Never invent version numbers, dates, or benchmark stats.
+
 **The visual system has three independent axes** — mix them freely:
 
-- **`theme`** = brand *palette only* (colors + logo). `claude`, `openai`, `gemini`,
+- **`theme`** = brand _palette only_ (colors + logo). `claude`, `openai`, `gemini`,
   `grok`, `meta`, `mistral`, `breaking` (vendorless high-attention news), `default`.
   Set it to match the subject; when unset the renderer auto-detects from idea/pillar
   (`detectTheme` in `src/render.ts`). Themes no longer carry gradients/decor — no
   more rainbow washes.
-- **`template`** = content *layout only*. `numbered-list`, `step-by-step`,
+- **`template`** = content _layout only_. `numbered-list`, `step-by-step`,
   `myth-reality`, `mistake-solution`, `comparison`, `checklist`, `breaking-news`.
   Pick the one that fits the content shape.
-- **`art_direction`** = the *style* (typography + background treatment + decor +
+- **`art_direction`** = the _style_ (typography + background treatment + decor +
   motion personality), owned by `src/art-direction.ts`. Six distinct, deliberately
   artistic, non-rainbow systems:
   - `editorial` — high-contrast serif magazine, whitespace, hairline accent, grain.
   - `brutalist` — mono type, hard grid, square blocks, bracket labels (how-tos).
   - `spotlight` — dark cinematic stage, one accent glow, centered oversized type.
-  - `kinetic` — huge grotesk filling the frame (best for *short* punchy hooks).
+  - `kinetic` — huge grotesk filling the frame (best for _short_ punchy hooks).
   - `blueprint` — technical graph grid, corner ticks, mono annotations.
   - `poster` — bold Swiss color blocks + oversized type.
-  Leave it unset to let the `ART_DIRECTION` Setting rotate it (default `auto`,
-  seeded per idea). **Set it deliberately and vary it from recent posts** so every
-  post looks like a different designed piece. Match the style to the content
-  (kinetic → one-line hooks; brutalist/blueprint → technical how-tos; editorial →
-  explainers; spotlight/poster → launches).
+    Leave it unset to let the `ART_DIRECTION` Setting rotate it (default `auto`,
+    seeded per idea). **Set it deliberately and vary it from recent posts** so every
+    post looks like a different designed piece. Match the style to the content
+    (kinetic → one-line hooks; brutalist/blueprint → technical how-tos; editorial →
+    explainers; spotlight/poster → launches). `kinetic` **and** `brutalist` use
+    wide/mono display type — keep their cover hooks short (≤ ~6 words) or auto-fit
+    will shrink them to the 56px floor.
 - Visual inspection must **reject bland output**: every slide must show the art
   direction's background treatment + a graphic accent, real display typography (not
   a plain system sans), and the cover must carry the theme's logo mark and a
@@ -204,7 +207,7 @@ below the accessible minimum. Only write `visual-approval.json` once it passes.
   treatment + decor + per-style motion) and `resolveArtDirection` (explicit →
   `ART_DIRECTION` pin → deterministic per-idea rotation).
 - `src/visual-validation.ts` — copy, metric, and image (sharp) validation; closer
-  + unsourced-claim gates.
+  - unsourced-claim gates.
 - `src/r2.ts` — public (media/previews) vs private (locks/idempotency/token/
   recovery) buckets. Private state must never touch the public bucket.
 - `src/locks.ts` — distributed workflow lock in private R2 (stale recovery).
