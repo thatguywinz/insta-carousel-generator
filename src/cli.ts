@@ -205,7 +205,10 @@ async function cmdRender(): Promise<number> {
   const ctx: SheetContext = { client, timezone: cfg.timezone };
   const settings = await readSettings(ctx);
   const brand = await loadBrand(settings);
-  const slides = await renderPost(post, brand, { motion: settings.MOTION_SLIDES });
+  const slides = await renderPost(post, brand, {
+    motion: settings.MOTION_SLIDES,
+    artDirection: settings.ART_DIRECTION,
+  });
   await mkdir(path.join(RUNTIME, 'slides'), { recursive: true });
   for (const s of slides) {
     const base = `slide-${String(s.index).padStart(2, '0')}`;
@@ -239,7 +242,10 @@ async function cmdRenderFixture(): Promise<number> {
   const brand = await loadBrand(
     settings ?? (await import('../schemas/settings.js')).parseSettings({}),
   );
-  const slides = await renderPost(post, brand);
+  const slides = await renderPost(post, brand, {
+    motion: settings?.MOTION_SLIDES ?? 'off',
+    artDirection: settings?.ART_DIRECTION,
+  });
   await mkdir(path.join(RUNTIME, 'fixture-slides'), { recursive: true });
   for (const s of slides) {
     await writeFile(

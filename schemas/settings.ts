@@ -49,6 +49,13 @@ export const SettingsSchema = z.object({
   PUBLISH_EXISTING_DRAFT_FIRST: z.boolean().default(true),
   AUTO_GENERATE_WHEN_EMPTY: z.boolean().default(true),
   MOTION_SLIDES: MotionSlidesSchema.catch('cover+key'),
+  /**
+   * Visual art-direction rotation. `auto` (default) rotates the style per idea;
+   * a specific style name (editorial/brutalist/spotlight/kinetic/blueprint/
+   * poster) pins every post to that look. Validated against known styles at
+   * render time; unknown values fall back to `auto`.
+   */
+  ART_DIRECTION: z.string().default('auto'),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -86,6 +93,7 @@ export function parseSettings(raw: Record<string, string>): Settings {
     AUTO_GENERATE_WHEN_EMPTY:
       parseSheetBoolean(raw.AUTO_GENERATE_WHEN_EMPTY) || raw.AUTO_GENERATE_WHEN_EMPTY === undefined,
     MOTION_SLIDES: (raw.MOTION_SLIDES ?? '').trim().toLowerCase(),
+    ART_DIRECTION: (raw.ART_DIRECTION ?? 'auto').trim().toLowerCase() || 'auto',
   });
 
   // Guard against inverted slide bounds.

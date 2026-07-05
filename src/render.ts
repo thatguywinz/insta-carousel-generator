@@ -8,6 +8,13 @@ import { Post, Slide, Template, ThemeName } from '../schemas/post.js';
 import { Settings, MotionSlides } from '../schemas/settings.js';
 import { log } from './logger.js';
 import { captureFrames, encodeMp4, pauseAndReset, resolveFfmpeg } from './motion.js';
+import { fontFaceCss } from './fonts.js';
+import {
+  resolveArtDirection,
+  ResolvedArtDirection,
+  MOTION_KEYFRAMES,
+  BASELINE_MOTION_CSS,
+} from './art-direction.js';
 
 /**
  * Deterministic HTML/CSS → 1080×1350 image renderer. Templates provide a
@@ -63,6 +70,8 @@ export interface Brand {
   };
   style: string;
   language: string;
+  /** Value-driven follow reason from DEFAULT_CTA; used to fill the CTA slide. */
+  defaultCta?: string;
 }
 
 interface DefaultBrandFile {
@@ -198,6 +207,7 @@ export async function loadBrand(settings: Settings): Promise<Brand> {
     colors: parseBrandColors(settings.BRAND_COLORS, def.colors),
     style: settings.BRAND_STYLE.trim() || def.style,
     language: settings.POST_LANGUAGE.trim() || def.language,
+    defaultCta: settings.DEFAULT_CTA.trim() || undefined,
   };
 }
 
@@ -266,34 +276,31 @@ function logoDataUri(name: string): string | undefined {
   return logoCache.get(name);
 }
 
-/** Claude / Anthropic: warm cream world, clay accents, soft organic shapes. */
-function claudeThemeCss(logo: string | undefined): string {
+/**
+ * Themes are PALETTE-ONLY. They define the `--c-*` color roles for a subject and
+ * nothing else — the background TREATMENT and DECOR belong to the art direction
+ * (src/art-direction.ts), which is injected after the theme. This keeps the
+ * three axes (theme=color, template=layout, art-direction=style) independent and
+ * removes the old per-theme "rainbow" gradient washes.
+ */
+
+/** Claude / Anthropic: warm cream palette, clay accents. */
+function claudeThemeCss(): string {
   return `
   :root {
     --c-primary: #1F1E1D; --c-secondary: #CC785C; --c-accent: #D97757;
     --c-bg: #F0EEE6; --c-surface: #FFFDF8; --c-text: #1F1E1D;
     --c-muted: #6E6558; --c-on-primary: #F5EDE3;
     --c-ink-accent: #A84E30;
-    --c-on-primary-accent: #D97757;
-    --g-bg: linear-gradient(160deg, #F0EEE6 0%, #F3E7D9 55%, #F5E6D8 100%);
+    --c-on-primary-accent: #E7A98C;
     --c-card: #FFFDF8; --c-card-border: #E6D8C4;
     --c-bad-bg: #F6E2D8; --c-bad-border: #C25E3C; --c-bad-tag: #A84E30;
     --c-good-bg: #EAEDDF; --c-good-border: #77875D; --c-good-tag: #55673F;
   }
-  .decor-1 { width: 880px; height: 880px; border-radius: 50%; top: -330px; right: -300px;
-    background: radial-gradient(circle, rgba(217,119,87,0.36), rgba(217,119,87,0) 68%); }
-  .decor-2 { width: 740px; height: 740px; border-radius: 50%; bottom: -290px; left: -260px;
-    background: radial-gradient(circle, rgba(204,120,92,0.26), rgba(204,120,92,0) 70%); }
-  ${
-    logo
-      ? `.decor-3 { width: 430px; height: 430px; right: -60px; bottom: 170px; opacity: 0.15;
-    transform: rotate(15deg); background: url("${logo}") center / contain no-repeat; }`
-      : ''
-  }
   `;
 }
 
-/** OpenAI / ChatGPT: near-black with a teal glow and thin geometric accents. */
+/** OpenAI / ChatGPT: near-black with a teal accent. */
 function openaiThemeCss(): string {
   return `
   :root {
@@ -302,160 +309,91 @@ function openaiThemeCss(): string {
     --c-muted: #A6ADBB; --c-on-primary: #05231A;
     --c-ink-accent: #2FC79E;
     --c-on-primary-accent: #05231A;
-    --g-bg: radial-gradient(1100px 800px at 50% -8%, rgba(16,163,127,0.20), rgba(16,163,127,0) 62%),
-            radial-gradient(900px 700px at 88% 108%, rgba(16,163,127,0.12), rgba(16,163,127,0) 58%),
-            linear-gradient(180deg, #0D0D0D 0%, #101013 100%);
     --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,255,255,0.16);
     --c-bad-bg: rgba(240,84,84,0.12); --c-bad-border: #F26D6D; --c-bad-tag: #FF9B8E;
     --c-good-bg: rgba(16,163,127,0.14); --c-good-border: #10A37F; --c-good-tag: #2FC79E;
   }
-  .decor-1 { inset: 0;
-    background:
-      linear-gradient(rgba(255,255,255,0.045) 1px, transparent 1px) 0 0 / 100% 108px,
-      linear-gradient(90deg, rgba(255,255,255,0.045) 1px, transparent 1px) 0 0 / 108px 100%; }
-  .decor-2 { width: 1600px; height: 2px; top: 310px; left: -220px; transform: rotate(-16deg);
-    background: linear-gradient(90deg, rgba(16,163,127,0), rgba(16,163,127,0.75), rgba(16,163,127,0)); }
-  .decor-3 { width: 620px; height: 620px; border: 2px solid rgba(16,163,127,0.30);
-    border-radius: 50%; top: -230px; right: -210px; }
   `;
 }
 
-/** A faint, rotated brand mark bled into the lower-right (shared decor-3). */
-function logoDecor(logo: string | undefined, opacity = 0.14): string {
-  return logo
-    ? `.decor-3 { width: 430px; height: 430px; right: -50px; bottom: 160px; opacity: ${opacity};
-    transform: rotate(12deg); background: url("${logo}") center / contain no-repeat; }`
-    : '';
-}
-
-/** Google Gemini: cool white with a blue→purple spark and soft glows. */
-function geminiThemeCss(logo: string | undefined): string {
+/** Google Gemini: cool white with a blue accent (purple as ink-accent). */
+function geminiThemeCss(): string {
   return `
   :root {
     --c-primary: #1B1B28; --c-secondary: #4285F4; --c-accent: #9B72CB;
     --c-bg: #F6F8FE; --c-surface: #FFFFFF; --c-text: #1B1B28;
     --c-muted: #5B6072; --c-on-primary: #FFFFFF;
     --c-ink-accent: #6C4BB6; --c-on-primary-accent: #C9B6E8;
-    --g-bg: radial-gradient(1000px 760px at 12% -6%, rgba(66,133,244,0.20), rgba(66,133,244,0) 60%),
-            radial-gradient(900px 720px at 92% 108%, rgba(155,114,203,0.22), rgba(155,114,203,0) 58%),
-            linear-gradient(160deg, #F6F8FE 0%, #F1F0FB 100%);
     --c-card: #FFFFFF; --c-card-border: #E1E6F5;
     --c-bad-bg: #FCEBEC; --c-bad-border: #D64545; --c-bad-tag: #C23838;
     --c-good-bg: #EAF1FC; --c-good-border: #4285F4; --c-good-tag: #2C64C8;
   }
-  .decor-1 { width: 860px; height: 860px; border-radius: 50%; top: -320px; right: -280px;
-    background: radial-gradient(circle, rgba(66,133,244,0.28), rgba(66,133,244,0) 68%); }
-  .decor-2 { width: 720px; height: 720px; border-radius: 50%; bottom: -280px; left: -250px;
-    background: radial-gradient(circle, rgba(155,114,203,0.26), rgba(155,114,203,0) 70%); }
-  ${logoDecor(logo, 0.12)}
   `;
 }
 
 /** xAI Grok: stark near-black with a cool electric accent. */
-function grokThemeCss(logo: string | undefined): string {
+function grokThemeCss(): string {
   return `
   :root {
     --c-primary: #F3F4F6; --c-secondary: #E7E9EA; --c-accent: #7FB2FF;
     --c-bg: #0A0A0C; --c-surface: #16171A; --c-text: #F3F4F6;
     --c-muted: #A6ADBB; --c-on-primary: #0A0A0C;
     --c-ink-accent: #9CC4FF; --c-on-primary-accent: #0A0A0C;
-    --g-bg: radial-gradient(1100px 780px at 78% -10%, rgba(127,178,255,0.16), rgba(127,178,255,0) 60%),
-            linear-gradient(180deg, #0A0A0C 0%, #101116 100%);
     --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,255,255,0.16);
     --c-bad-bg: rgba(240,84,84,0.12); --c-bad-border: #F26D6D; --c-bad-tag: #FF9B8E;
     --c-good-bg: rgba(127,178,255,0.14); --c-good-border: #7FB2FF; --c-good-tag: #9CC4FF;
   }
-  .decor-1 { width: 1500px; height: 2px; top: 300px; left: -200px; transform: rotate(-18deg);
-    background: linear-gradient(90deg, rgba(127,178,255,0), rgba(127,178,255,0.7), rgba(127,178,255,0)); }
-  .decor-2 { width: 640px; height: 640px; border: 2px solid rgba(255,255,255,0.10);
-    border-radius: 50%; top: -240px; right: -220px; }
-  ${logoDecor(logo, 0.1)}
   `;
 }
 
-/** Meta AI: light with a bold Meta-blue ribbon and glow. */
-function metaThemeCss(logo: string | undefined): string {
+/** Meta AI: light with a bold Meta-blue accent. */
+function metaThemeCss(): string {
   return `
   :root {
     --c-primary: #101828; --c-secondary: #0866FF; --c-accent: #0866FF;
     --c-bg: #F4F7FF; --c-surface: #FFFFFF; --c-text: #101828;
     --c-muted: #566074; --c-on-primary: #FFFFFF;
     --c-ink-accent: #0A5AE0; --c-on-primary-accent: #CFE0FF;
-    --g-bg: radial-gradient(1000px 780px at 88% -8%, rgba(8,102,255,0.22), rgba(8,102,255,0) 60%),
-            linear-gradient(165deg, #F4F7FF 0%, #EAF0FF 100%);
     --c-card: #FFFFFF; --c-card-border: #DCE6FB;
     --c-bad-bg: #FCEBEC; --c-bad-border: #D64545; --c-bad-tag: #C23838;
     --c-good-bg: #E7F0FF; --c-good-border: #0866FF; --c-good-tag: #0A5AE0;
   }
-  .decor-1 { width: 900px; height: 900px; border-radius: 50%; top: -360px; right: -300px;
-    background: radial-gradient(circle, rgba(8,102,255,0.24), rgba(8,102,255,0) 68%); }
-  .decor-2 { width: 700px; height: 700px; border-radius: 50%; bottom: -300px; left: -260px;
-    background: radial-gradient(circle, rgba(8,102,255,0.14), rgba(8,102,255,0) 70%); }
-  ${logoDecor(logo, 0.1)}
   `;
 }
 
-/** Mistral: dark with a warm flame gradient rising from the base. */
-function mistralThemeCss(logo: string | undefined): string {
+/** Mistral: dark with a warm flame accent. */
+function mistralThemeCss(): string {
   return `
   :root {
     --c-primary: #FBF3EC; --c-secondary: #FA520F; --c-accent: #FF8205;
     --c-bg: #0E0B09; --c-surface: #1A1512; --c-text: #FBF3EC;
     --c-muted: #C6A992; --c-on-primary: #1A0E06;
     --c-ink-accent: #FF8A3D; --c-on-primary-accent: #2A1305;
-    --g-bg: radial-gradient(1100px 820px at 50% 118%, rgba(250,82,15,0.28), rgba(250,82,15,0) 58%),
-            radial-gradient(760px 620px at 86% -8%, rgba(255,130,5,0.16), rgba(255,130,5,0) 60%),
-            linear-gradient(180deg, #0E0B09 0%, #140F0B 100%);
     --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,180,120,0.20);
     --c-bad-bg: rgba(240,84,84,0.12); --c-bad-border: #F26D6D; --c-bad-tag: #FF9B8E;
     --c-good-bg: rgba(255,130,5,0.14); --c-good-border: #FF8205; --c-good-tag: #FF8A3D;
   }
-  .decor-1 { width: 900px; height: 900px; border-radius: 50%; bottom: -360px; left: -220px;
-    background: radial-gradient(circle, rgba(250,82,15,0.30), rgba(250,82,15,0) 68%); }
-  .decor-2 { width: 640px; height: 640px; border-radius: 50%; top: -240px; right: -200px;
-    background: radial-gradient(circle, rgba(255,130,5,0.18), rgba(255,130,5,0) 70%); }
-  ${logoDecor(logo, 0.12)}
   `;
 }
 
-/** Generic high-attention "AI news / breaking" look: red + near-black, urgent. */
-function breakingThemeCss(logo: string | undefined): string {
+/** Generic high-attention "AI news / breaking" look: red on near-black. */
+function breakingThemeCss(): string {
   return `
   :root {
-    --c-primary: #FFFFFF; --c-secondary: #FF3B30; --c-accent: #FFD400;
+    --c-primary: #FFFFFF; --c-secondary: #FF3B30; --c-accent: #FF3B30;
     --c-bg: #0C0C0E; --c-surface: #17171B; --c-text: #FFFFFF;
     --c-muted: #B4B9C6; --c-on-primary: #14060A;
     --c-ink-accent: #FF6A61; --c-on-primary-accent: #14060A;
-    --g-bg: radial-gradient(1200px 820px at 50% -12%, rgba(255,59,48,0.26), rgba(255,59,48,0) 56%),
-            linear-gradient(180deg, #0C0C0E 0%, #121016 100%);
     --c-card: rgba(255,255,255,0.05); --c-card-border: rgba(255,255,255,0.16);
     --c-bad-bg: rgba(255,59,48,0.14); --c-bad-border: #FF3B30; --c-bad-tag: #FF6A61;
     --c-good-bg: rgba(255,212,0,0.14); --c-good-border: #FFD400; --c-good-tag: #F2C200;
   }
-  .decor-1 { top: 0; left: 0; width: 100%; height: 14px;
-    background: linear-gradient(90deg, #FF3B30, #FFD400); }
-  .decor-2 { width: 900px; height: 900px; border-radius: 50%; bottom: -360px; right: -300px;
-    background: radial-gradient(circle, rgba(255,59,48,0.18), rgba(255,59,48,0) 70%); }
-  ${logoDecor(logo, 0.1)}
   `;
 }
 
-/** Default: keep the premium brand palette but add a gradient wash + accents. */
-const DEFAULT_THEME_CSS = `
-  :root {
-    --g-bg: linear-gradient(165deg, var(--c-bg) 0%,
-      color-mix(in srgb, var(--c-bg) 88%, var(--c-secondary)) 55%,
-      color-mix(in srgb, var(--c-bg) 80%, var(--c-accent)) 100%);
-  }
-  .decor-1 { width: 900px; height: 900px; border-radius: 50%; top: -380px; right: -330px;
-    background: radial-gradient(circle,
-      color-mix(in srgb, var(--c-accent) 26%, transparent), transparent 68%); }
-  .decor-2 { width: 720px; height: 720px; border-radius: 50%; bottom: -300px; left: -260px;
-    background: radial-gradient(circle,
-      color-mix(in srgb, var(--c-secondary) 20%, transparent), transparent 68%); }
-  .decor-3 { top: 0; left: 0; width: 100%; height: 12px;
-    background: linear-gradient(90deg, var(--c-secondary), var(--c-accent)); }
-`;
+/** Default: no third-party subject — the brand palette (from brandVars) stands
+ *  alone; the art direction supplies background treatment + decor. */
+const DEFAULT_THEME_CSS = '';
 
 /** Resolve the full theme (palette CSS + embedded mark) for a post. */
 export function resolveTheme(
@@ -463,34 +401,20 @@ export function resolveTheme(
 ): ResolvedTheme {
   const name = detectTheme(post);
   switch (name) {
-    case 'claude': {
-      const logo = logoDataUri('claude');
-      return { name, css: claudeThemeCss(logo), logo, label: 'Claude' };
-    }
-    case 'openai': {
-      const logo = logoDataUri('openai');
-      return { name, css: openaiThemeCss(), logo, label: 'OpenAI' };
-    }
-    case 'gemini': {
-      const logo = logoDataUri('gemini');
-      return { name, css: geminiThemeCss(logo), logo, label: 'Gemini' };
-    }
-    case 'grok': {
-      const logo = logoDataUri('grok');
-      return { name, css: grokThemeCss(logo), logo, label: 'Grok' };
-    }
-    case 'meta': {
-      const logo = logoDataUri('meta');
-      return { name, css: metaThemeCss(logo), logo, label: 'Meta AI' };
-    }
-    case 'mistral': {
-      const logo = logoDataUri('mistral');
-      return { name, css: mistralThemeCss(logo), logo, label: 'Mistral' };
-    }
-    case 'breaking': {
-      const logo = logoDataUri('breaking');
-      return { name, css: breakingThemeCss(logo), logo, label: 'AI News' };
-    }
+    case 'claude':
+      return { name, css: claudeThemeCss(), logo: logoDataUri('claude'), label: 'Claude' };
+    case 'openai':
+      return { name, css: openaiThemeCss(), logo: logoDataUri('openai'), label: 'OpenAI' };
+    case 'gemini':
+      return { name, css: geminiThemeCss(), logo: logoDataUri('gemini'), label: 'Gemini' };
+    case 'grok':
+      return { name, css: grokThemeCss(), logo: logoDataUri('grok'), label: 'Grok' };
+    case 'meta':
+      return { name, css: metaThemeCss(), logo: logoDataUri('meta'), label: 'Meta AI' };
+    case 'mistral':
+      return { name, css: mistralThemeCss(), logo: logoDataUri('mistral'), label: 'Mistral' };
+    case 'breaking':
+      return { name, css: breakingThemeCss(), logo: logoDataUri('breaking'), label: 'AI News' };
     default:
       return { name: 'default', css: DEFAULT_THEME_CSS };
   }
@@ -567,54 +491,13 @@ const BASE_CSS = `
 `;
 
 /**
- * Motion layer. Applied only to `.slide.motion` (animated slides), so static
- * renders are byte-identical to before. Every animation is:
- *   - "settled at t=0": frame 0 equals the static composition, which is what the
- *     overflow validator (MEASURE_FN, run once at t=0) sees AND what Instagram
- *     shows as the grid thumbnail. No entrance reveals, no off-canvas starts.
- *   - periodic over 2s (or a divisor), so the captured 2s loop tiles seamlessly
- *     when ffmpeg repeats it to reach the 3s+ minimum.
- * Content elements animate only non-layout properties (background-position,
- * text-shadow, opacity) or transforms with generous margin; decor lives in the
- * clipped .decor-layer and may transform freely.
+ * Motion. The shared keyframes (MOTION_KEYFRAMES) plus each art direction's own
+ * `.slide.motion …` selectors live in src/art-direction.ts. They are injected
+ * only on animated slides, so static renders stay byte-identical, and every
+ * animation is "settled at t=0" (frame 0 == the still poster the overflow
+ * validator sees) and seamless over a 2s loop. When no art direction is present
+ * (older callers/tests), BASELINE_MOTION_CSS provides the prior behavior.
  */
-const ANIM_CSS = `
-  @keyframes bg-shimmer {
-    0% { background-position: 0% 50%; }
-    50% { background-position: 100% 50%; }
-    100% { background-position: 0% 50%; }
-  }
-  @keyframes blob-a {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    50% { transform: translate(26px, -20px) scale(1.06); }
-  }
-  @keyframes blob-b {
-    0%, 100% { transform: translate(0, 0) scale(1); }
-    50% { transform: translate(-22px, 16px) scale(1.05); }
-  }
-  @keyframes spin-slow {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  @keyframes hl-glow {
-    0%, 100% { text-shadow: 0 0 0 color-mix(in srgb, var(--c-ink-accent) 0%, transparent); }
-    50% { text-shadow: 0 0 34px color-mix(in srgb, var(--c-ink-accent) 55%, transparent); }
-  }
-  @keyframes kicker-pulse {
-    0%, 100% { opacity: 0.82; }
-    50% { opacity: 1; }
-  }
-  @keyframes swipe-bob {
-    0%, 100% { transform: translateX(0); opacity: 0.7; }
-    50% { transform: translateX(12px); opacity: 1; }
-  }
-  .slide.motion { background-size: 200% 200%; animation: bg-shimmer 2s ease-in-out infinite; }
-  .slide.motion .decor-1 { animation: blob-a 2s ease-in-out infinite; }
-  .slide.motion .decor-2 { animation: blob-b 2s ease-in-out infinite; }
-  .slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
-  .slide.motion .kicker { animation: kicker-pulse 2s ease-in-out infinite; }
-  .slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
-`;
 
 function brandVars(brand: Brand): string {
   const c = brand.colors;
@@ -622,7 +505,7 @@ function brandVars(brand: Brand): string {
 }
 
 /** Render the inner HTML of a single slide by type. */
-function slideBody(slide: Slide, index: number, theme?: ResolvedTheme): string {
+function slideBody(slide: Slide, index: number, brand: Brand, theme?: ResolvedTheme): string {
   const kicker = slide.kicker ? `<div class="kicker">${esc(slide.kicker)}</div>` : '';
   const brandmark =
     theme?.logo && theme.label
@@ -685,13 +568,19 @@ function slideBody(slide: Slide, index: number, theme?: ResolvedTheme): string {
           ${slide.body ? `<p class="body">${esc(slide.body)}</p>` : ''}
           ${(slide.items ?? []).length ? `<ul class="checks">${(slide.items ?? []).map((p) => `<li><span class="check">✓</span>${esc(p)}</li>`).join('')}</ul>` : ''}
         </div>`;
-    case 'cta':
+    case 'cta': {
+      // Wire the Sheet's DEFAULT_CTA (a value-driven follow reason) as the body
+      // fallback; the pill is a short action label (the long sentence would
+      // overflow a button), defaulting to "Follow @handle".
+      const ctaBody = slide.body || brand.defaultCta || '';
+      const ctaPill = slide.kicker || `Follow ${brand.instagramHandle}`;
       return `
         <div class="content cta">
           <h2 class="headline">${esc(slide.headline)}</h2>
-          ${slide.body ? `<p class="body">${esc(slide.body)}</p>` : ''}
-          <div class="cta-pill">${esc(slide.kicker || 'Save & share')}</div>
+          ${ctaBody ? `<p class="body">${esc(ctaBody)}</p>` : ''}
+          <div class="cta-pill">${esc(ctaPill)}</div>
         </div>`;
+    }
     case 'standard-content':
     default:
       return `
@@ -711,6 +600,7 @@ export function buildSlideHtml(
   templateCss: string,
   theme?: ResolvedTheme,
   animate = false,
+  art?: ResolvedArtDirection,
 ): string {
   const footer = `
     <div class="footer">
@@ -724,11 +614,17 @@ export function buildSlideHtml(
       <div class="decor decor-2"></div>
       <div class="decor decor-3"></div>
     </div>`;
-  const motionCss = animate ? `\n${ANIM_CSS}` : '';
+  // Cascade: fonts → base → brand palette → theme palette → template layout →
+  // art-direction style → motion (art-direction owns background + decor + type).
+  const artCss = art ? `\n${art.css}` : '';
+  const motionCss = animate
+    ? `\n${MOTION_KEYFRAMES}\n${art ? art.motionCss : BASELINE_MOTION_CSS}`
+    : '';
+  const artClass = art ? ` ad-${art.name}` : '';
   const motionClass = animate ? ' motion' : '';
   return `<!doctype html><html lang="${esc(brand.language)}"><head><meta charset="utf-8">
-    <style>${BASE_CSS}\n${brandVars(brand)}\n${theme?.css ?? DEFAULT_THEME_CSS}\n${templateCss}${motionCss}</style></head>
-    <body><div class="slide slide-${slide.type}${motionClass}">${decor}${slideBody(slide, index, theme)}${footer}</div></body></html>`;
+    <style>${fontFaceCss()}\n${BASE_CSS}\n${brandVars(brand)}\n${theme?.css ?? DEFAULT_THEME_CSS}\n${templateCss}${artCss}${motionCss}</style></head>
+    <body><div class="slide slide-${slide.type}${artClass}${motionClass}">${decor}${slideBody(slide, index, brand, theme)}${footer}</div></body></html>`;
 }
 
 export interface SlideMetrics {
@@ -841,6 +737,8 @@ function resolveExecutablePath(): string | undefined {
 export interface RenderOptions {
   /** Which slides to capture as animated MP4s. Defaults to 'off' (image-only). */
   motion?: MotionMode;
+  /** ART_DIRECTION setting: `auto` (rotate per idea) or a pinned style name. */
+  artDirection?: string;
 }
 
 /**
@@ -854,6 +752,7 @@ export async function renderPost(
 ): Promise<RenderedSlide[]> {
   const templateCss = await loadTemplateCss(post.template);
   const theme = resolveTheme(post);
+  const art = resolveArtDirection(post, opts.artDirection);
   const motionMode: MotionMode = opts.motion ?? 'off';
   const animateFlags = post.slides.map((s, i) => shouldAnimate(s, i + 1, motionMode));
   const anyMotion = animateFlags.some(Boolean);
@@ -861,6 +760,7 @@ export async function renderPost(
   log.info('theme resolved', {
     theme: theme.name,
     template: post.template,
+    artDirection: art.name,
     motion: motionMode,
     motionSlides: animateFlags.filter(Boolean).length,
   });
@@ -882,7 +782,7 @@ export async function renderPost(
     for (let i = 0; i < post.slides.length; i++) {
       const slide = post.slides[i]!;
       const animate = animateFlags[i]!;
-      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss, theme, animate);
+      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss, theme, animate, art);
       const page: Page = await context.newPage();
       await page.setViewportSize(clip);
       await page.setContent(html, { waitUntil: 'networkidle' });

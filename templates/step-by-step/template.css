@@ -1,35 +1,5 @@
-/* step-by-step — vertical progress rail, ringed circular step badges */
-.slide-cover .content.cover {
-  justify-content: center;
-  gap: 28px;
-}
-.slide-cover .headline {
-  font-size: 90px;
-  font-weight: 900;
-  letter-spacing: -2px;
-}
-.slide-cover .headline::after {
-  content: '';
-  display: block;
-  width: 180px;
-  height: 14px;
-  border-radius: 8px;
-  margin-top: 36px;
-  background: linear-gradient(90deg, var(--c-secondary), var(--c-accent));
-}
-.content.cover .kicker {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  margin-bottom: 6px;
-}
-.content.cover .kicker::before {
-  content: '';
-  width: 64px;
-  height: 10px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, var(--c-accent), var(--c-secondary));
-}
+/* step-by-step — content layout only: vertical progress rail, ringed circular
+   step badges. Cover/kicker/swipe/background belong to the art direction. */
 .swipe {
   display: inline-flex;
   align-self: flex-start;
@@ -55,7 +25,7 @@
   width: 10px;
   border-radius: 8px;
   opacity: 0.9;
-  background: linear-gradient(180deg, var(--c-secondary), var(--c-accent));
+  background: var(--c-accent);
 }
 .numbered .row {
   display: flex;

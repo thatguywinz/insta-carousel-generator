@@ -68,16 +68,21 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
 
 ### Authoring rules (must follow)
 
-- One clear lesson. Match `NICHE`, `TARGET_AUDIENCE`, `POST_LANGUAGE`.
-- 6–8 slides normally, within `MIN_SLIDES`..`MAX_SLIDES`. First slide `cover`;
-  last `summary` or `cta`.
+- **Value first, even for news.** Every carousel must leave the reader with
+  something they can *use* — a takeaway, a workflow, a "what this means for you",
+  not just "X happened". Report the news, then make it actionable. Match `NICHE`,
+  `TARGET_AUDIENCE`, `ACCOUNT_GOAL`, `POST_LANGUAGE`.
+- 5–8 slides normally, within `MIN_SLIDES`..`MAX_SLIDES`. First slide `cover`;
+  **last slide must be `cta`** (or `summary`) — `NO_CLOSER` is now a hard error.
 - Headlines ≤ ~10 words; bodies ~15–40 words. No generic AI filler, no unmet
-  clickbait, minimal emoji, natural human wording.
+  clickbait, minimal emoji, natural human wording that sounds like a person.
 - **Never invent** statistics, quotes, case studies, prices, laws, credentials.
   If the topic needs current facts, research primary sources and put them in
-  `post.sources`; otherwise prefer evergreen practical content.
+  `post.sources`; otherwise prefer evergreen practical content. A post with a hard
+  statistic/price and zero `sources` now fails validation (`UNSOURCED_CLAIM`).
 - Do not repeat a recent topic/hook/framework — `src/similarity.ts` runs an
-  automated dedup check; apply semantic judgment on top.
+  automated dedup check; apply semantic judgment on top. Also **vary the
+  `art_direction`** from recent posts (see below) so the feed never looks samey.
 - The workflow overrides `idea_id` and `idempotency_key`; your `post-plan.json`
   values for those are placeholders.
 
@@ -97,6 +102,22 @@ the number/claim (source volatile facts in `post.sources`). Auto-fit shrinks a b
 cover headline to fit (floor ~56px); if it still overflows, **shorten the copy** —
 don't accept a tiny hook. Avoid the phrases blocklisted in `src/visual-validation.ts`.
 
+### CTA playbook (the last slide earns the follow)
+
+The final `cta` slide is where a scroller becomes a follower — only if you give them
+a concrete reason. Recap the value delivered, then promise more of it. Write it so
+someone who just got value thinks "yes, I want the next one".
+
+- **Value-specific, not generic** — "Follow @realestgarg — every new AI tool broken
+  down in a 6-slide carousel", not "follow for more".
+- **Tie it to what they just got** — "That's how to fan out agents. I post one of
+  these every time a tool ships → follow so you don't miss it."
+- **One clear action** — save, share, or follow (pick one primary).
+- `headline` = the ask ("Want the next drop first?"); `body` = the follow reason;
+  `kicker` = a short button label. Leave `body`/`kicker` empty to inherit the Sheet's
+  `DEFAULT_CTA` (the body) and `Follow @handle` (the pill) — both wired in
+  `src/render.ts`. Never ship an empty, generic closer.
+
 ### Content direction & theming
 
 - This account covers **Claude / Claude Code, OpenAI / Codex, Gemini, Grok, Meta
@@ -105,17 +126,34 @@ don't accept a tiny hook. Avoid the phrases blocklisted in `src/visual-validatio
 - For topics that need current facts (new releases, version numbers, dates,
   benchmarks), **research primary sources** and put the URLs in `post.sources`.
   Never invent version numbers, dates, or benchmark stats.
-- Set the carousel's `theme` in `post-plan.json` to match the subject so the right
-  brand colors + logo apply. Themes: `claude`, `openai`, `gemini`, `grok`, `meta`,
-  `mistral`, `breaking` (generic high-attention AI-news look for vendorless
-  stories), `default`. When unset, the renderer auto-detects from the idea/pillar
-  text (`detectTheme` in `src/render.ts`).
-- Templates: `numbered-list`, `step-by-step`, `myth-reality`, `mistake-solution`,
-  `comparison`, `checklist`, and `breaking-news` (a newsroom chyron + oversized
-  hook — pairs well with the `breaking` theme for scroll-stopping news posts).
-- Visual inspection must **reject bland output**: every slide should show the
-  themed background gradient and a graphic accent, and the cover must carry the
-  theme's logo mark — not plain text on a flat background.
+**The visual system has three independent axes** — mix them freely:
+
+- **`theme`** = brand *palette only* (colors + logo). `claude`, `openai`, `gemini`,
+  `grok`, `meta`, `mistral`, `breaking` (vendorless high-attention news), `default`.
+  Set it to match the subject; when unset the renderer auto-detects from idea/pillar
+  (`detectTheme` in `src/render.ts`). Themes no longer carry gradients/decor — no
+  more rainbow washes.
+- **`template`** = content *layout only*. `numbered-list`, `step-by-step`,
+  `myth-reality`, `mistake-solution`, `comparison`, `checklist`, `breaking-news`.
+  Pick the one that fits the content shape.
+- **`art_direction`** = the *style* (typography + background treatment + decor +
+  motion personality), owned by `src/art-direction.ts`. Six distinct, deliberately
+  artistic, non-rainbow systems:
+  - `editorial` — high-contrast serif magazine, whitespace, hairline accent, grain.
+  - `brutalist` — mono type, hard grid, square blocks, bracket labels (how-tos).
+  - `spotlight` — dark cinematic stage, one accent glow, centered oversized type.
+  - `kinetic` — huge grotesk filling the frame (best for *short* punchy hooks).
+  - `blueprint` — technical graph grid, corner ticks, mono annotations.
+  - `poster` — bold Swiss color blocks + oversized type.
+  Leave it unset to let the `ART_DIRECTION` Setting rotate it (default `auto`,
+  seeded per idea). **Set it deliberately and vary it from recent posts** so every
+  post looks like a different designed piece. Match the style to the content
+  (kinetic → one-line hooks; brutalist/blueprint → technical how-tos; editorial →
+  explainers; spotlight/poster → launches).
+- Visual inspection must **reject bland output**: every slide must show the art
+  direction's background treatment + a graphic accent, real display typography (not
+  a plain system sans), and the cover must carry the theme's logo mark and a
+  scroll-stopping hook — it should look like a piece of art.
 
 ### Motion (moving carousels)
 
@@ -126,11 +164,13 @@ don't accept a tiny hook. Avoid the phrases blocklisted in `src/visual-validatio
 - Motion is captured deterministically (CSS `@keyframes` → frame-stepped
   screenshots → H.264 MP4 via `src/motion.ts`) and every motion slide still emits
   a poster PNG (its settled t=0 frame) for inspection and the grid thumbnail.
-- **Authoring for motion:** all animation is "settled at t=0" (drift/shimmer/glow
-  on already-visible elements) so the first frame is a strong still and the
-  overflow check passes. You don't hand-write animations — they're baked into the
-  theme/template CSS; you only choose which slides move via `MOTION_SLIDES` /
-  `animate`.
+- **Authoring for motion:** all animation is "settled at t=0" (light sweeps,
+  parallax/drift, breathing glows, slow-rotating accent marks on already-visible
+  elements) so the first frame is a strong still and the overflow check passes.
+  Each `art_direction` has its own motion personality (`motionCss` +
+  `MOTION_KEYFRAMES` in `src/art-direction.ts`); you don't hand-write animations —
+  you only choose which slides move via `MOTION_SLIDES` / per-slide `animate: true`
+  (flag the one or two "key" slides worth animating under `cover+key`).
 - **Before the first LIVE motion post**, run `npm run verify:motion` — it creates
   and polls a real VIDEO container (no parent, no publish) to confirm Instagram
   accepts the MP4 spec. Requires a full `ffmpeg` with libx264 (bundled via
@@ -155,9 +195,16 @@ below the accessible minimum. Only write `visual-approval.json` once it passes.
 - `src/idea-selection.ts` — priority ordering, resumable rows, generated ideas.
 - `src/similarity.ts` — deterministic Jaccard + bigram dedup.
 - `src/research-validation.ts` — detects volatile claims needing sources.
-- `src/render.ts` — HTML/CSS → 1080×1350 PNG via Chromium; brand-color role
-  inference; in-page overflow/font metrics.
-- `src/visual-validation.ts` — copy, metric, and image (sharp) validation.
+- `src/render.ts` — HTML/CSS → 1080×1350 PNG via Chromium; palette-only themes;
+  brand-color role inference; in-page overflow/font metrics; CTA wiring.
+- `src/fonts.ts` — embedded `woff2` faces (Inter / Space Grotesk / Fraunces /
+  Space Mono) as `data:` URIs; exposes `--font` / `--font-display` / `--font-serif`
+  / `--font-mono`.
+- `src/art-direction.ts` — the six art-direction styles (typography + background
+  treatment + decor + per-style motion) and `resolveArtDirection` (explicit →
+  `ART_DIRECTION` pin → deterministic per-idea rotation).
+- `src/visual-validation.ts` — copy, metric, and image (sharp) validation; closer
+  + unsourced-claim gates.
 - `src/r2.ts` — public (media/previews) vs private (locks/idempotency/token/
   recovery) buckets. Private state must never touch the public bucket.
 - `src/locks.ts` — distributed workflow lock in private R2 (stale recovery).
@@ -167,8 +214,10 @@ below the accessible minimum. Only write `visual-approval.json` once it passes.
 - `src/recovery.ts` — idempotency keys/records, ambiguous-publish verification.
 - `src/workflow.ts` — the orchestrator (`runWorkflow`); one carousel per run.
 - `src/cli.ts` — command entry points.
-- `templates/<name>/template.css` — six branded visual systems layered on the
-  shared base CSS in `render.ts`.
+- `templates/<name>/template.css` — seven content-layout systems (layout only;
+  palette + style come from the theme + art direction) layered on the shared base
+  CSS in `render.ts`.
+- `assets/fonts/*.woff2` — vendored SIL-OFL faces embedded by `src/fonts.ts`.
 
 ---
 

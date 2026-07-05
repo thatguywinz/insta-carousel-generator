@@ -149,3 +149,22 @@ describe('themed slide html', () => {
     expect(html).not.toContain('data:image/svg+xml');
   });
 });
+
+describe('cta slide wiring', () => {
+  const ctaBrand: Brand = { ...brand, defaultCta: 'Follow @test — the value line.' };
+
+  it('fills body from DEFAULT_CTA and pill from the handle when blank', () => {
+    const cta: Slide = { type: 'cta', headline: 'Want the next one?', body: '', kicker: '' };
+    const html = buildSlideHtml(cta, 6, 6, ctaBrand, '');
+    expect(html).toContain('Follow @test — the value line.');
+    expect(html).toContain('Follow @test'); // pill label
+    expect(html).not.toContain('Save &amp; share');
+  });
+
+  it('keeps author-written cta body + kicker when provided', () => {
+    const cta: Slide = { type: 'cta', headline: 'Ask', body: 'Save this now', kicker: 'Save' };
+    const html = buildSlideHtml(cta, 6, 6, ctaBrand, '');
+    expect(html).toContain('Save this now');
+    expect(html).toContain('>Save<');
+  });
+});

@@ -5,6 +5,7 @@ import { Settings } from '../schemas/settings.js';
 import { RenderedSlide, SLIDE_WIDTH, SLIDE_HEIGHT, MIN_BODY_FONT_PX } from './render.js';
 import { inspectMp4 } from './motion.js';
 import { validateSlideBounds } from '../schemas/post.js';
+import { validateClaims } from './research-validation.js';
 
 /**
  * Automated visual + copy validation. Runs BEFORE upload/publish. Failing
@@ -32,8 +33,19 @@ const GENERIC_AI_PHRASES = [
   'game-changer',
   'in conclusion',
   'dive deep',
+  "let's dive in",
   'when it comes to',
   'the world of',
+  'without further ado',
+  'buckle up',
+  'say goodbye to',
+  'look no further',
+  'harness the power',
+  'supercharge your',
+  'revolutionize',
+  'in a nutshell',
+  'the future is here',
+  'game changer',
 ];
 
 function countWords(text: string): number {
@@ -72,9 +84,22 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
     issues.push({
       slide: post.slides.length,
       code: 'NO_CLOSER',
-      message: 'last slide should be summary or cta',
-      severity: 'warning',
+      message: 'last slide must be a summary or cta that closes the value + earns the follow',
+      severity: 'error',
     });
+  }
+  // A cta closer needs a value reason to follow: either the slide carries it or
+  // DEFAULT_CTA supplies it at render. Warn (don't block) when neither exists.
+  if (last && last.type === 'cta') {
+    const ctaCopy = `${last.body ?? ''} ${last.kicker ?? ''}`.trim();
+    if (!ctaCopy && !settings.DEFAULT_CTA.trim()) {
+      issues.push({
+        slide: post.slides.length,
+        code: 'CTA_WEAK',
+        message: 'cta has no follow reason — write a cta body or set DEFAULT_CTA in the Sheet',
+        severity: 'warning',
+      });
+    }
   }
 
   // Per-slide headline/body checks.
@@ -160,6 +185,33 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
     });
   }
 
+  return { ok: issues.every((i) => i.severity !== 'error'), issues };
+}
+
+/**
+ * Anti-fabrication: a post that makes volatile hard claims (statistics, prices,
+ * legal/medical assertions) must carry at least one source. Blocks publish so
+ * the operator adds a primary source or rewrites — never invents a number.
+ */
+export function validateResearch(post: Post): ValidationReport {
+  const combined = (
+    post.caption +
+    ' ' +
+    post.slides
+      .map((s) =>
+        [s.headline, s.body, s.myth, s.reality, s.mistake, s.solution, ...(s.items ?? [])]
+          .filter(Boolean)
+          .join(' '),
+      )
+      .join(' ')
+  ).trim();
+  const { issues: claimIssues } = validateClaims(combined, post.sources.length);
+  const issues: ValidationIssue[] = claimIssues.map((message) => ({
+    slide: null,
+    code: 'UNSOURCED_CLAIM',
+    message,
+    severity: 'error' as const,
+  }));
   return { ok: issues.every((i) => i.severity !== 'error'), issues };
 }
 
@@ -314,6 +366,7 @@ export async function validateAll(
 ): Promise<ValidationReport> {
   const reports = [
     validatePostCopy(post, settings),
+    validateResearch(post),
     validateMetrics(slides),
     await validateImages(slides),
   ];

@@ -2,7 +2,12 @@ import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { validatePostCopy, validateMetrics, validateImages } from '../../src/visual-validation.js';
+import {
+  validatePostCopy,
+  validateMetrics,
+  validateImages,
+  validateResearch,
+} from '../../src/visual-validation.js';
 import { RenderedSlide, SlideMetrics, SLIDE_WIDTH, SLIDE_HEIGHT } from '../../src/render.js';
 import { PostSchema, Post } from '../../schemas/post.js';
 import { parseSettings } from '../../schemas/settings.js';
@@ -86,6 +91,58 @@ describe('copy validation', () => {
     slides[2] = { ...(slides[1] as (typeof slides)[number]) };
     const report = validatePostCopy(PostSchema.parse({ ...dup, slides }), settings);
     expect(report.issues.some((i) => i.code === 'DUP_SLIDE')).toBe(true);
+  });
+
+  it('errors (not warns) when the last slide is not a cta/summary closer', () => {
+    const slides = post.slides.map((s, i) =>
+      i === post.slides.length - 1 ? { ...s, type: 'standard-content' as const } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const closer = report.issues.find((i) => i.code === 'NO_CLOSER');
+    expect(closer?.severity).toBe('error');
+    expect(report.ok).toBe(false);
+  });
+
+  it('warns (not blocks) when a cta has no follow reason and DEFAULT_CTA is empty', () => {
+    const slides = post.slides.map((s, i) =>
+      i === post.slides.length - 1
+        ? { type: 'cta' as const, headline: 'Want more?', body: '', kicker: '' }
+        : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const weak = report.issues.find((i) => i.code === 'CTA_WEAK');
+    expect(weak?.severity).toBe('warning');
+    expect(report.ok).toBe(true);
+  });
+});
+
+describe('research / claim validation', () => {
+  it('blocks a hard statistic with no sources', () => {
+    const withStat = {
+      ...post,
+      sources: [],
+      slides: post.slides.map((s, i) =>
+        i === 1 ? { ...s, body: 'This makes agents 42% faster on multi-part tasks.' } : s,
+      ),
+    };
+    const report = validateResearch(PostSchema.parse(withStat));
+    expect(report.ok).toBe(false);
+    expect(report.issues.some((i) => i.code === 'UNSOURCED_CLAIM')).toBe(true);
+  });
+
+  it('passes the same stat when a source is attached', () => {
+    const withSource = {
+      ...post,
+      sources: [{ url: 'https://example.com/benchmark', description: 'benchmark' }],
+      slides: post.slides.map((s, i) =>
+        i === 1 ? { ...s, body: 'This makes agents 42% faster on multi-part tasks.' } : s,
+      ),
+    };
+    expect(validateResearch(PostSchema.parse(withSource)).ok).toBe(true);
+  });
+
+  it('passes the evergreen sample fixture with no volatile claims', () => {
+    expect(validateResearch(post).ok).toBe(true);
   });
 });
 

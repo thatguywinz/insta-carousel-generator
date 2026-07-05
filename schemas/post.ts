@@ -60,6 +60,22 @@ export const ThemeNameSchema = z.enum([
 ]);
 export type ThemeName = z.infer<typeof ThemeNameSchema>;
 
+/**
+ * Art direction — the visual "style" axis, independent of theme (palette) and
+ * template (content layout). Controls typography, background treatment, decor
+ * and motion personality so every post can look like a different designed piece.
+ * When absent the renderer rotates it deterministically per idea.
+ */
+export const ArtDirectionSchema = z.enum([
+  'editorial',
+  'brutalist',
+  'spotlight',
+  'kinetic',
+  'blueprint',
+  'poster',
+]);
+export type ArtDirection = z.infer<typeof ArtDirectionSchema>;
+
 /** A single slide. Fields are optional per slide type; renderer reads what it needs. */
 export const SlideSchema = z
   .object({
@@ -111,6 +127,8 @@ export const PostSchema = z
     template: TemplateSchema,
     /** Optional explicit visual theme; overrides keyword detection. */
     theme: ThemeNameSchema.optional(),
+    /** Optional explicit art direction; overrides the ART_DIRECTION rotation. */
+    art_direction: ArtDirectionSchema.optional(),
     slides: z.array(SlideSchema).min(3).max(20),
     caption: z.string().min(1).max(2200),
     hashtags: z.array(z.string().min(1)).max(8),

@@ -59,8 +59,18 @@ Three tabs, never renamed: `Instructions`, `Settings`, `Content`.
 `TARGET_AUDIENCE`, `ACCOUNT_GOAL`, `BRAND_NAME`, `INSTAGRAM_HANDLE`,
 `BRAND_COLORS`, `BRAND_STYLE`, `CONTENT_PILLARS`, `DEFAULT_CTA`, `POST_LANGUAGE`,
 `LOOKBACK_DAYS`, `MIN_SLIDES`, `MAX_SLIDES`, `PUBLISH_EXISTING_DRAFT_FIRST`,
-`AUTO_GENERATE_WHEN_EMPTY`, `MOTION_SLIDES`. `MODE` defaults safely to `TEST` when
-missing or unknown.
+`AUTO_GENERATE_WHEN_EMPTY`, `MOTION_SLIDES`, `ART_DIRECTION`. `MODE` defaults safely
+to `TEST` when missing or unknown.
+
+- **`DEFAULT_CTA`** — the value-driven follow reason. It fills the closing `cta`
+  slide's body when the author leaves it blank (the pill defaults to
+  `Follow @handle`). Make it specific, e.g. *"Follow @you — every new AI tool broken
+  down in a quick carousel"*, not "follow for more".
+- **`ART_DIRECTION`** — the visual style rotation. `auto` (**default**) picks a
+  style per idea from the six systems (`editorial`, `brutalist`, `spotlight`,
+  `kinetic`, `blueprint`, `poster`) so every post looks different; or pin one style
+  name to lock the look. Style = typography + background treatment + decor + motion,
+  independent of `theme` (palette) and `template` (layout).
 
 - **`MOTION_SLIDES`** — animated (MP4) carousel slides: `off` (image-only),
   `cover` (slide 1 animates), `cover+key` (**default** — cover + any slide flagged

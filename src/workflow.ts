@@ -283,7 +283,10 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     // Refresh the lock before rendering: motion capture + encode can take
     // minutes (especially MOTION_SLIDES=all), so start it with a full TTL.
     await heartbeatLock(r2, lock, { stage: 'render', ideaId: selectedIdeaId });
-    const slides = await renderPost(post, brand, { motion: settings.MOTION_SLIDES });
+    const slides = await renderPost(post, brand, {
+      motion: settings.MOTION_SLIDES,
+      artDirection: settings.ART_DIRECTION,
+    });
     result.slideCount = slides.length;
 
     stage('validate');

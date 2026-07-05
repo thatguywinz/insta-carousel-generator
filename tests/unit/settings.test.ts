@@ -44,6 +44,16 @@ describe('settings parsing', () => {
     expect(s.AUTO_GENERATE_WHEN_EMPTY).toBe(false);
   });
 
+  it('defaults ART_DIRECTION to auto and lowercases a pinned style', () => {
+    expect(parseSettings({}).ART_DIRECTION).toBe('auto');
+    expect(parseSettings({ ART_DIRECTION: '  Spotlight ' }).ART_DIRECTION).toBe('spotlight');
+    expect(parseSettings({ ART_DIRECTION: '' }).ART_DIRECTION).toBe('auto');
+  });
+
+  it('defaults MOTION_SLIDES to cover+key', () => {
+    expect(parseSettings({}).MOTION_SLIDES).toBe('cover+key');
+  });
+
   it('parseSheetBoolean handles common truthy/falsey forms', () => {
     expect(parseSheetBoolean('TRUE')).toBe(true);
     expect(parseSheetBoolean('yes')).toBe(true);
