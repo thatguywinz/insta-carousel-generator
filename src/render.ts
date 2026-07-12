@@ -488,6 +488,12 @@ const BASE_CSS = `
     background: var(--c-primary); color: var(--c-on-primary);
     font-size: 46px; font-weight: 800; }
   .pagenum { font-variant-numeric: tabular-nums; }
+  /* Defensive default so the cover swipe hint is always legible: some
+     template + art-direction combinations (e.g. breaking-news + spotlight)
+     each defer swipe styling to the other, which otherwise leaves it at the
+     16px browser default and trips the TINY_FONT gate. Both may override. */
+  .swipe { font-size: 28px; font-weight: 600; color: var(--c-muted);
+    letter-spacing: 2px; }
 `;
 
 /**
