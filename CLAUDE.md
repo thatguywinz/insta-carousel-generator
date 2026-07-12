@@ -56,11 +56,12 @@ Recommended operating sequence for a normal run:
 ```
 npm ci
 npm run healthcheck
-# RESEARCH FIRST: web-search what actually shipped in the last MAX_STORY_AGE_DAYS
-# and open the primary source (changelog / release notes / official announcement).
+# RESEARCH FIRST: web-search the last 24-48h (then widen to MAX_STORY_AGE_DAYS).
+# Real story? → NEWS lane. Genuinely nothing shipped? → VALUE lane (education).
 npm run select-idea          # or, if queue empty, author runtime/idea-plan.json
 # author runtime/post-plan.json based on runtime/selection-context.json
-#   → must include why_now + sources[] with url/description/published_at
+#   news  → content_type:"news",  why_now + sources[] (url/description/published_at)
+#   value → content_type:"value", value_promise + no_news_reason + 2 actionable slides
 npm run render               # renders runtime/slides/*.png + validation report
 # READ every runtime/slides/*.png yourself; fix copy/template if anything is off
 # write runtime/visual-approval.json {"approved":true,"notes":"..."}
@@ -69,56 +70,86 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
 
 `MODE_OVERRIDE=TEST npm run workflow:test` forces TEST regardless of the Sheet.
 
-### Research FIRST — before you author anything
+### Two lanes: NEWS first, VALUE as the honest fallback
 
-**This account covers what is genuinely NEW in AI.** You are not a tips blog. Every
-run starts by finding out what actually happened, not by imagining a topic.
+The mission is **AI education** — teaching people who want to actually _use_ AI,
+from newcomers to practitioners. There are exactly two ways to do that, and neither
+is filler. Every run you pick a lane and declare it in `post.content_type`.
 
-1. **Search before you write — and race.** Being _first_ on a story is most of the
-   reach, so search **the last 24–48h first** (`BREAKING_WINDOW_HOURS`, default 48):
-   model/tool releases, version bumps, pricing or policy changes, notable
-   benchmarks, new features in Claude / Claude Code / OpenAI / Codex / Gemini /
-   Grok / Llama / Mistral / new AI tools. Only widen to `MAX_STORY_AGE_DAYS`
-   (default 14) if nothing broke in the window. A story older than the breaking
-   window still publishes but raises `SLOW_TO_POST` — take it as a nudge to go
-   find the fresher thing first.
-   - If something big broke **today**, post that, even if the queue holds older
-     ideas. Stale auto-generated queue entries expire automatically
-     (`selectUnusedIdea` skips Claude-sourced rows older than `MAX_STORY_AGE_DAYS`),
-     so a breaking story preempts the queue. Give a breaking idea `priority: High`.
-2. **Go to the primary source** — the changelog, release notes, model card, docs,
-   or the company's own announcement. Not a rehash, not a rumour thread.
-3. **Record it**: every `post.sources[]` entry needs `url`, `description`, and
-   `published_at` (`YYYY-MM-DD`). This is what proves the story is real and fresh.
-4. **Write `post.why_now`** — one honest sentence: _what happened, when, and why a
-   reader should care this week_. **If you cannot write that sentence, do not post.**
-   Go find a real story instead.
+**Lane 1 — `news` (always preferred).** A real, fresh, sourced development.
+**Lane 2 — `value` (fallback ONLY when nothing shipped).** Real AI education: one
+concrete technique the reader can use today.
+
+**News always wins.** If a genuine story broke inside `MAX_STORY_AGE_DAYS`
+(default 14), you cover it — you do not get to skip it because a tips post is
+easier. The value lane exists for quiet weeks, not for lazy ones.
+
+### Step 1 — always research first
+
+1. **Search, and race.** Being _first_ is most of the reach, so search **the last
+   24–48h first** (`BREAKING_WINDOW_HOURS`, default 48): model/tool releases,
+   version bumps, pricing or policy changes, notable benchmarks, new features in
+   Claude / Claude Code / OpenAI / Codex / Gemini / Grok / Llama / Mistral / new AI
+   tools. Widen to `MAX_STORY_AGE_DAYS` only if nothing broke in the window. A story
+   older than the breaking window still publishes but raises `SLOW_TO_POST`.
+   - If something big broke **today**, post that even if the queue holds older ideas.
+     Stale auto-generated queue rows expire automatically, so a breaking story
+     preempts the queue. Give a breaking idea `priority: High`.
+2. **Go to the primary source** — changelog, release notes, model card, docs, or the
+   company's own announcement. Not a rehash, not a rumour thread.
+3. **Only if the search genuinely comes up empty** do you switch to the value lane —
+   and you must then write `post.no_news_reason` saying what you searched and why
+   nothing was worth covering.
+
+### Step 2a — authoring a NEWS post (`content_type: "news"`)
+
+- `post.sources[]` — each needs `url`, `description`, `published_at` (`YYYY-MM-DD`).
+- `post.why_now` — one honest sentence: what happened, when, why it matters now.
+- Then **make it usable**: report the change, then give the takeaway — the setting to
+  flip, the workflow it unlocks, what it means for the reader's stack.
+
+### Step 2b — authoring a VALUE post (`content_type: "value"`)
+
+This is AI education, and it must be **worth a stranger's time** — not filler.
+
+- `post.value_promise` — the concrete thing the reader can DO afterwards. "Scope your
+  agent's context so it stops re-reading files it doesn't need." **Not** "learn about
+  AI", not "understand prompting".
+- `post.no_news_reason` — the honest fallback reason (see above).
+- **Teach a method, don't describe one.** At least 2 actionable slides
+  (`numbered-point` / `step` / `checklist` / `comparison` / `mistake-solution`) —
+  `NOT_ACTIONABLE` blocks a deck that is just vibes.
+- **Be specific and current**: real settings, real prompts, real workflows, named
+  tools and models that exist right now. Specificity is the whole difference between
+  education and filler.
+- **Serve both ends of the audience**: a newcomer should be able to follow the steps,
+  and someone already in AI should still learn a non-obvious detail.
+- Good: "The Claude Code setting that stops it re-reading your repo", "Why your RAG
+  answers go stale — and the one fix", "Cursor vs Claude Code for refactors".
+  Bad: "AI tips everyone should know", "how to use ChatGPT better".
 
 ### The bar: is this actually worth posting?
 
-Kill the idea unless it clears all four. Posting nothing beats posting filler.
+Kill the idea unless it clears all four:
 
-- **New** — it happened recently and is anchored to a dated primary source.
-- **True** — the version numbers, dates, prices and benchmarks come from that source.
-- **Useful** — the reader can _do_ something with it (a workflow, a setting, a
-  "what this means for you"), not just "X happened".
-- **Non-obvious** — someone who follows AI casually would still learn something.
+- **True** — every version number, date, price and benchmark comes from a real source.
+- **Useful** — the reader can _do_ something with it.
+- **Non-obvious** — someone who already follows AI still learns something.
+- **Specific** — it names real tools, settings, numbers. Vagueness is the tell.
 
-**Auto-reject** (these are exactly what the account must never look like): "N AI
-tools/prompts you need", "mind-blowing AI hacks", "ultimate guide to X", "10x your
-workflow", timeless how-tos with no news peg, and anything you cannot source.
-`src/newsworthiness.ts` warns on these shapes (`LOW_VALUE_IDEA`).
-
-Evergreen how-tos are allowed **only when hung on a fresh peg** — "how to use the
-parallel subagents that shipped Tuesday", not "how to use AI better".
+**Auto-rejected outright** (`HYPE_SLOP`, a hard error): "mind-blowing AI hacks",
+"tools you need", "ultimate guide to X", "10x your workflow", "game-changing",
+"nobody's talking about". Say the actual thing instead. A numbered listicle only
+_warns_ (`LISTICLE_SHAPE`) — "4 Claude Code settings that cut my token bill" is
+excellent; "5 AI tips" is filler. The number is fine; vagueness is not.
 
 ### Authoring rules (must follow)
 
-- **Enforced by validation** (`CONTENT_MODE=news-first` blocks the run):
-  `NO_WHY_NOW` (missing/thin `why_now`), `NO_SOURCE` (zero sources),
-  `NO_SOURCE_DATE` (no `published_at`), `STALE_STORY` (freshest source older than
-  `MAX_STORY_AGE_DAYS`). These are **errors, not suggestions** — a run that trips
-  them ships nothing, which is the intended outcome.
+- **Enforced by validation** — errors here mean the run ships nothing, on purpose:
+  - news lane: `NO_WHY_NOW`, `NO_SOURCE`, `NO_SOURCE_DATE`, `STALE_STORY`
+  - value lane: `NO_VALUE_PROMISE`, `NO_FALLBACK_REASON`, `NOT_ACTIONABLE`
+  - either lane: `HYPE_SLOP`
+  - `CONTENT_MODE=news-only` additionally rejects the value lane (`VALUE_NOT_ALLOWED`).
 - **Report the news, then make it usable.** Lead with what changed, then give the
   takeaway/workflow. Match `NICHE`, `TARGET_AUDIENCE`, `ACCOUNT_GOAL`,
   `POST_LANGUAGE`.

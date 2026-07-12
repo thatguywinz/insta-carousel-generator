@@ -1,21 +1,24 @@
 import { DateTime } from 'luxon';
-import { Post } from '../schemas/post.js';
-import { Settings } from '../schemas/settings.js';
+import { Post, ContentType } from '../schemas/post.js';
+import { Settings, isEnforcingMode } from '../schemas/settings.js';
 
 /**
- * The "is this actually worth posting?" bar.
+ * The content policy: "is this worth someone's attention?"
  *
- * The account exists to break down what is genuinely NEW in AI. Without a gate,
- * an autonomous author drifts toward timeless filler ("5 prompts you need"),
- * which is cheap to write and worthless to read. In `news-first` CONTENT_MODE a
- * post must therefore prove three things, or it does not ship:
+ * The account has TWO honest lanes, and the whole point is that neither is filler:
  *
- *   1. WHY NOW  — an explicit anchor: what happened, and why it matters this week.
- *   2. SOURCED  — at least one primary source URL (no invented releases).
- *   3. FRESH    — a source published within MAX_STORY_AGE_DAYS.
+ *   NEWS  (always preferred) — a real, fresh, sourced development. Must prove:
+ *         why_now + a primary source + a published_at inside MAX_STORY_AGE_DAYS.
  *
- * Evergreen how-tos are still allowed, but only when hung on a fresh peg (e.g.
- * "how to use the parallel subagents that shipped Tuesday").
+ *   VALUE (fallback only)    — AI education for people who want to actually USE AI.
+ *         Allowed only when genuinely nothing shipped. Must prove it teaches one
+ *         concrete, testable thing: value_promise + an actionable deck + an honest
+ *         no_news_reason. This is NOT the easy default — it costs extra fields on
+ *         purpose, so the author only pays that cost after really looking for news.
+ *
+ * Hype/clickbait shapes are rejected outright in either lane. Numeric listicles
+ * only warn — "5 Claude Code settings that actually matter" is fine; "5 AI hacks
+ * that will blow your mind" is not.
  */
 
 export interface NewsIssue {
@@ -24,14 +27,8 @@ export interface NewsIssue {
   severity: 'error' | 'warning';
 }
 
-/**
- * Idea/hook shapes that are almost always low-value listicle filler. These warn
- * rather than block — judgment stays with the operator — but they should make
- * the author stop and find a real story instead.
- */
-const LOW_VALUE_PATTERNS: RegExp[] = [
-  /\b\d+\s+(ai\s+|chatgpt\s+|claude\s+)?(tools|prompts|tips|tricks|hacks|secrets)\b/i,
-  /\b(tools|prompts|apps)\s+you\s+(need|must)\b/i,
+/** Hype/clickbait shapes. Never acceptable, in either lane. */
+const HYPE_PATTERNS: RegExp[] = [
   /\b(blow|blew)\s+your\s+mind\b/i,
   /\bmind[-\s]?blowing\b/i,
   /\bchange\s+your\s+life\b/i,
@@ -39,7 +36,31 @@ const LOW_VALUE_PATTERNS: RegExp[] = [
   /\bultimate\s+guide\b/i,
   /\b10x\s+your\b/i,
   /\bnobody\s+is\s+talking\s+about\b/i,
+  /\b(tools|prompts|apps)\s+you\s+(need|must)\b/i,
+  /\bgame[-\s]?chang(er|ing)\b/i,
+  /\bsecret\s+(ai\s+)?(tools|prompts|hacks)\b/i,
 ];
+
+/**
+ * Bare numeric listicles. These only WARN: a numbered post can be excellent when
+ * it is specific ("4 Claude Code settings that cut my token spend"), so judgment
+ * stays with the operator — but the shape is a common filler tell.
+ */
+const LISTICLE_PATTERNS: RegExp[] = [
+  // "5 prompts", "4 Claude Code tips", "7 AI tools" — a count, then up to a few
+  // qualifier words, then the filler noun.
+  /\b\d+\s+(\w+\s+){0,3}(tools|prompts|tips|tricks|hacks|secrets)\b/i,
+];
+
+/** Slide types that actually teach something the reader can act on. */
+const ACTIONABLE_SLIDE_TYPES = new Set([
+  'numbered-point',
+  'step',
+  'checklist',
+  'mistake-solution',
+  'comparison',
+  'myth-reality',
+]);
 
 /** Parse a source date leniently (ISO date or full timestamp). */
 export function parseSourceDate(raw: string | undefined, zone = 'utc'): DateTime | null {
@@ -51,10 +72,7 @@ export function parseSourceDate(raw: string | undefined, zone = 'utc'): DateTime
   return fmt.isValid ? fmt : null;
 }
 
-/**
- * Age in days of the freshest dated source, or null when no source carries a
- * parseable date.
- */
+/** Age in days of the freshest dated source, or null when none is dated. */
 export function freshestSourceAgeDays(post: Post, now: DateTime): number | null {
   let best: number | null = null;
   for (const src of post.sources) {
@@ -66,57 +84,54 @@ export function freshestSourceAgeDays(post: Post, now: DateTime): number | null 
   return best;
 }
 
-/**
- * Gate a post on newsworthiness. In `news-first` the checks block; in `mixed`
- * they only warn; in `evergreen-ok` the freshness bar is skipped entirely.
- */
-export function validateNewsworthiness(
+/** True when a story broke inside the first-mover window (worth racing on). */
+export function isBreaking(
   post: Post,
   settings: Settings,
   now: DateTime = DateTime.utc(),
+): boolean {
+  const age = freshestSourceAgeDays(post, now);
+  return age !== null && age * 24 <= settings.BREAKING_WINDOW_HOURS;
+}
+
+/**
+ * Infer the lane when the author did not declare one: a post carrying sources or
+ * a why_now anchor is clearly attempting news; anything else is a value post.
+ */
+export function resolveContentType(post: Post): ContentType {
+  if (post.content_type) return post.content_type;
+  if (post.sources.length > 0 || (post.why_now ?? '').trim()) return 'news';
+  return 'value';
+}
+
+/** NEWS lane: real, sourced, fresh. */
+function checkNewsLane(
+  post: Post,
+  settings: Settings,
+  now: DateTime,
+  severity: 'error' | 'warning',
 ): NewsIssue[] {
   const issues: NewsIssue[] = [];
-  const mode = settings.CONTENT_MODE;
 
-  // Low-value listicle shapes always warn, in every mode.
-  const ideaText = `${post.idea} ${post.hook}`;
-  for (const pattern of LOW_VALUE_PATTERNS) {
-    if (pattern.test(ideaText)) {
-      issues.push({
-        code: 'LOW_VALUE_IDEA',
-        message: `idea/hook reads like generic listicle filler (matched ${pattern}) — anchor it to a real, recent development instead`,
-        severity: 'warning',
-      });
-      break;
-    }
-  }
-
-  if (mode === 'evergreen-ok') return issues;
-  const severity: 'error' | 'warning' = mode === 'news-first' ? 'error' : 'warning';
-
-  // 1. WHY NOW — the explicit newsworthiness anchor.
-  const whyNow = (post.why_now ?? '').trim();
-  if (whyNow.length < 20) {
+  if ((post.why_now ?? '').trim().length < 20) {
     issues.push({
       code: 'NO_WHY_NOW',
       message:
-        'post.why_now is missing or too thin — state what actually happened, when, and why it matters now. If you cannot, this is not worth posting.',
+        'post.why_now is missing or too thin — state what actually happened, when, and why it matters now.',
       severity,
     });
   }
 
-  // 2. SOURCED — a real primary source, never an invented release.
   if (post.sources.length === 0) {
     issues.push({
       code: 'NO_SOURCE',
       message:
-        'a news-first post needs at least one primary source (post.sources) — research the announcement/release notes before authoring',
+        'a news post needs at least one primary source (post.sources) — read the announcement/release notes before authoring',
       severity,
     });
     return issues;
   }
 
-  // 3. FRESH — the story must be recent.
   const age = freshestSourceAgeDays(post, now);
   if (age === null) {
     issues.push({
@@ -128,16 +143,13 @@ export function validateNewsworthiness(
   } else if (age > settings.MAX_STORY_AGE_DAYS) {
     issues.push({
       code: 'STALE_STORY',
-      message: `freshest source is ${Math.round(age)} days old (> MAX_STORY_AGE_DAYS ${settings.MAX_STORY_AGE_DAYS}) — this is not news any more; find a current story`,
+      message: `freshest source is ${Math.round(age)} days old (> MAX_STORY_AGE_DAYS ${settings.MAX_STORY_AGE_DAYS}) — this is not news any more. Either find a current story, or switch to a value post (content_type: "value").`,
       severity,
     });
   } else if (age * 24 > settings.BREAKING_WINDOW_HOURS) {
-    // Fresh enough to publish, but the first-mover advantage is gone. Warn so the
-    // operator prefers a story that broke inside the window — being early is most
-    // of the reach.
     issues.push({
       code: 'SLOW_TO_POST',
-      message: `story is ~${Math.round(age * 24)}h old (> BREAKING_WINDOW_HOURS ${settings.BREAKING_WINDOW_HOURS}) — still publishable, but you are not first. Prefer something that broke in the last ${settings.BREAKING_WINDOW_HOURS}h if one exists.`,
+      message: `story is ~${Math.round(age * 24)}h old (> BREAKING_WINDOW_HOURS ${settings.BREAKING_WINDOW_HOURS}) — still worth posting, but you are not first.`,
       severity: 'warning',
     });
   }
@@ -145,12 +157,104 @@ export function validateNewsworthiness(
   return issues;
 }
 
-/** True when a story broke inside the first-mover window (worth racing on). */
-export function isBreaking(
+/**
+ * VALUE lane: real AI education, never filler. The fallback must still earn the
+ * reader's time — it teaches ONE concrete thing they can do today.
+ */
+function checkValueLane(post: Post, severity: 'error' | 'warning'): NewsIssue[] {
+  const issues: NewsIssue[] = [];
+
+  if ((post.value_promise ?? '').trim().length < 20) {
+    issues.push({
+      code: 'NO_VALUE_PROMISE',
+      message:
+        'post.value_promise is missing or too thin — name the concrete thing the reader can DO after this (a workflow, a setting, a technique). "Learn about AI" is not a promise.',
+      severity,
+    });
+  }
+
+  if ((post.no_news_reason ?? '').trim().length < 20) {
+    issues.push({
+      code: 'NO_FALLBACK_REASON',
+      message:
+        'post.no_news_reason is missing — the value lane is a FALLBACK. Say what you searched and why nothing shipped was worth covering. If real news exists, cover the news instead.',
+      severity,
+    });
+  }
+
+  // A value post must actually teach: steps, a checklist, a comparison — not vibes.
+  const actionable = post.slides.filter((s) => ACTIONABLE_SLIDE_TYPES.has(s.type)).length;
+  if (actionable < 2) {
+    issues.push({
+      code: 'NOT_ACTIONABLE',
+      message:
+        'a value post needs at least 2 actionable slides (numbered-point / step / checklist / comparison / mistake-solution) — teach a concrete method, do not just describe one',
+      severity,
+    });
+  }
+
+  return issues;
+}
+
+/**
+ * Gate a post. News is always preferred; value is the honest fallback. In
+ * `news-only` a value post is rejected outright; in `mixed` everything only warns;
+ * in `evergreen-ok` only the hype check applies.
+ */
+export function validateNewsworthiness(
   post: Post,
   settings: Settings,
   now: DateTime = DateTime.utc(),
-): boolean {
-  const age = freshestSourceAgeDays(post, now);
-  return age !== null && age * 24 <= settings.BREAKING_WINDOW_HOURS;
+): NewsIssue[] {
+  const issues: NewsIssue[] = [];
+  const mode = settings.CONTENT_MODE;
+  const ideaText = `${post.idea} ${post.hook}`;
+
+  // Hype/clickbait is never acceptable — this is exactly what the account must
+  // not look like. Blocks in any enforcing mode, regardless of lane.
+  for (const pattern of HYPE_PATTERNS) {
+    if (pattern.test(ideaText)) {
+      issues.push({
+        code: 'HYPE_SLOP',
+        message: `idea/hook uses clickbait hype (matched ${pattern}) — say the actual thing instead`,
+        severity: isEnforcingMode(mode) ? 'error' : 'warning',
+      });
+      break;
+    }
+  }
+
+  for (const pattern of LISTICLE_PATTERNS) {
+    if (pattern.test(ideaText)) {
+      issues.push({
+        code: 'LISTICLE_SHAPE',
+        message: `idea/hook is a bare numeric listicle (matched ${pattern}) — fine only if each item is genuinely specific and useful; otherwise anchor it to a real development`,
+        severity: 'warning',
+      });
+      break;
+    }
+  }
+
+  if (mode === 'evergreen-ok') return issues;
+
+  const severity: 'error' | 'warning' = isEnforcingMode(mode) ? 'error' : 'warning';
+  const lane = resolveContentType(post);
+
+  if (lane === 'news') {
+    issues.push(...checkNewsLane(post, settings, now, severity));
+    return issues;
+  }
+
+  // lane === 'value'
+  if (mode === 'news-only') {
+    issues.push({
+      code: 'VALUE_NOT_ALLOWED',
+      message:
+        'CONTENT_MODE=news-only accepts news posts only — find a real, sourced story (or set CONTENT_MODE=news-preferred to allow the value fallback)',
+      severity: 'error',
+    });
+    return issues;
+  }
+
+  issues.push(...checkValueLane(post, severity));
+  return issues;
 }

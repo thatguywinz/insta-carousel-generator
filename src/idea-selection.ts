@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { DateTime } from 'luxon';
 import { TrackedRow } from '../schemas/post.js';
-import { Priority, Settings } from '../schemas/settings.js';
+import { Priority, Settings, isEnforcingMode } from '../schemas/settings.js';
 import { SheetContext, appendContentRow, nowTimestamp, columnLetter } from './content-tracker.js';
 import { batchUpdate } from './google-sheets.js';
 import { CONTENT_HEADERS, ContentHeader } from '../schemas/post.js';
@@ -87,9 +87,9 @@ export function selectUnusedIdea(
   return unused[0] ?? null;
 }
 
-/** Options a caller derives from Settings for news-first queue expiry. */
+/** Options a caller derives from Settings for news-lane queue expiry. */
 export function unusedSelectOptions(settings: Settings, timezone: string): UnusedSelectOptions {
-  return settings.CONTENT_MODE === 'news-first'
+  return isEnforcingMode(settings.CONTENT_MODE)
     ? { maxAgeDays: settings.MAX_STORY_AGE_DAYS, timezone }
     : { timezone };
 }

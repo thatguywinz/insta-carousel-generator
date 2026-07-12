@@ -25,14 +25,24 @@ export const MotionSlidesSchema = z.enum(['off', 'cover', 'cover+key', 'all']);
 export type MotionSlides = z.infer<typeof MotionSlidesSchema>;
 
 /**
- * How strict the newsworthiness bar is.
- * - news-first  : (default) every post must be anchored to a real, recent,
- *                 sourced development. Missing why_now/sources/freshness BLOCKS.
- * - mixed       : the same checks, but they only warn.
- * - evergreen-ok: no freshness bar (timeless how-tos allowed).
+ * The content policy. Two lanes exist — `news` and `value` (AI education) — and
+ * the mode decides how they may be used.
+ *
+ * - news-preferred : (default) NEWS WINS whenever a real, fresh story exists. When
+ *                    genuinely nothing shipped, a `value` post is allowed — but it
+ *                    must clear the value bar (a concrete promise + an actionable
+ *                    deck), never filler.
+ * - news-only      : only `news` posts ship. No fresh story → no post.
+ * - mixed          : the same checks, but they only warn.
+ * - evergreen-ok   : no bar at all.
  */
-export const ContentModeSchema = z.enum(['news-first', 'mixed', 'evergreen-ok']);
+export const ContentModeSchema = z.enum(['news-preferred', 'news-only', 'mixed', 'evergreen-ok']);
 export type ContentMode = z.infer<typeof ContentModeSchema>;
+
+/** Modes where the news/value bar actually blocks the run. */
+export function isEnforcingMode(mode: ContentMode): boolean {
+  return mode === 'news-preferred' || mode === 'news-only';
+}
 
 /** Parse a sheet boolean cell tolerantly. Unknown/blank => false. */
 export function parseSheetBoolean(raw: string | undefined): boolean {
@@ -89,8 +99,8 @@ export const SettingsSchema = z.object({
    * render time; unknown values fall back to `auto`.
    */
   ART_DIRECTION: z.string().default('auto'),
-  /** Newsworthiness bar. Default `news-first`: no anchor + sources → no post. */
-  CONTENT_MODE: ContentModeSchema.catch('news-first'),
+  /** Content policy. Default `news-preferred`: news wins, value is the fallback. */
+  CONTENT_MODE: ContentModeSchema.catch('news-preferred'),
   /** A story is "fresh" if a source was published within this many days. */
   MAX_STORY_AGE_DAYS: z.number().int().positive().default(14),
   /**
@@ -170,7 +180,11 @@ export function parseSettings(
     AUTO_GENERATE_WHEN_EMPTY: bool('AUTO_GENERATE_WHEN_EMPTY', true),
     MOTION_SLIDES: (raw.MOTION_SLIDES ?? '').trim().toLowerCase(),
     ART_DIRECTION: (raw.ART_DIRECTION ?? 'auto').trim().toLowerCase() || 'auto',
-    CONTENT_MODE: (raw.CONTENT_MODE ?? '').trim().toLowerCase(),
+    // `news-first` is the old name for the strict lane; keep it working.
+    CONTENT_MODE: (() => {
+      const v = (raw.CONTENT_MODE ?? '').trim().toLowerCase();
+      return v === 'news-first' ? 'news-only' : v;
+    })(),
     MAX_STORY_AGE_DAYS: num('MAX_STORY_AGE_DAYS', 14),
     BREAKING_WINDOW_HOURS: num('BREAKING_WINDOW_HOURS', 48),
   });

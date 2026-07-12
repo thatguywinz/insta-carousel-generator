@@ -62,11 +62,18 @@ Three tabs, never renamed: `Instructions`, `Settings`, `Content`.
 `AUTO_GENERATE_WHEN_EMPTY`, `MOTION_SLIDES`, `ART_DIRECTION`, `CONTENT_MODE`,
 `MAX_STORY_AGE_DAYS`. `MODE` defaults safely to `TEST` when missing or unknown.
 
-- **`CONTENT_MODE`** — the newsworthiness bar. `news-first` (**default**) means a
-  post must carry a `why_now` anchor, at least one primary source, and a source
-  published within `MAX_STORY_AGE_DAYS`, or the run ships nothing. `mixed`
-  downgrades those to warnings; `evergreen-ok` drops the freshness bar entirely.
-  Generic listicle shapes ("7 AI prompts you need") always warn.
+- **`CONTENT_MODE`** — the content policy. Posts run in one of two lanes
+  (`post.content_type`): **`news`** (a real, fresh, sourced development) or
+  **`value`** (AI education — one concrete technique the reader can use today).
+  - `news-preferred` (**default**) — news wins whenever a real story exists; the
+    value lane is the fallback for quiet weeks and must clear its own bar
+    (`value_promise` + `no_news_reason` + ≥2 actionable slides).
+  - `news-only` — news posts only; no fresh story → no post.
+  - `mixed` — same checks, warnings only. `evergreen-ok` — no bar.
+
+  Clickbait hype ("mind-blowing hacks", "tools you need") is rejected in any lane.
+  A numbered listicle only warns — specificity is what separates education from filler.
+
 - **`MAX_STORY_AGE_DAYS`** — how old a story may be and still count as news
   (default `14`). Stale Claude-generated ideas left in the queue expire after this,
   so a story that just broke preempts them (manual rows never expire).

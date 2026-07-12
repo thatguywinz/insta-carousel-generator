@@ -112,6 +112,13 @@ export const SlideSchema = z
   .strict();
 export type Slide = z.infer<typeof SlideSchema>;
 
+/**
+ * The two content lanes. `news` is always preferred; `value` (AI education) is
+ * the fallback for when genuinely nothing shipped.
+ */
+export const ContentTypeSchema = z.enum(['news', 'value']);
+export type ContentType = z.infer<typeof ContentTypeSchema>;
+
 export const SourceRefSchema = z.object({
   url: z.string().url(),
   description: z.string().max(200),
@@ -136,11 +143,26 @@ export const PostSchema = z
     art_direction: ArtDirectionSchema.optional(),
     slides: z.array(SlideSchema).min(3).max(20),
     /**
-     * The newsworthiness anchor: what actually happened, when, and why a reader
-     * should care THIS WEEK. If you cannot write this honestly, the post is not
-     * worth publishing. Required in `news-first` CONTENT_MODE.
+     * Which lane this post is in. `news` = a real, fresh, sourced development
+     * (always preferred). `value` = AI education, allowed only when genuinely
+     * nothing shipped — and only if it clears the value bar.
+     */
+    content_type: ContentTypeSchema.optional(),
+    /**
+     * NEWS lane. The anchor: what actually happened, when, and why a reader should
+     * care THIS WEEK. If you cannot write this honestly, it is not news.
      */
     why_now: z.string().max(280).optional(),
+    /**
+     * VALUE lane. The concrete thing the reader can DO after reading — a workflow,
+     * a setting, a technique. Not "learn about AI"; something testable today.
+     */
+    value_promise: z.string().max(280).optional(),
+    /**
+     * VALUE lane. Why you fell back: what you searched and why nothing was worth
+     * covering. Keeps the value lane an honest fallback, not the easy default.
+     */
+    no_news_reason: z.string().max(280).optional(),
     caption: z.string().min(1).max(2200),
     hashtags: z.array(z.string().min(1)).max(8),
     sources: z.array(SourceRefSchema).default([]),
