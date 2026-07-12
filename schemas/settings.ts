@@ -24,6 +24,16 @@ export type Source = z.infer<typeof SourceSchema>;
 export const MotionSlidesSchema = z.enum(['off', 'cover', 'cover+key', 'all']);
 export type MotionSlides = z.infer<typeof MotionSlidesSchema>;
 
+/**
+ * How strict the newsworthiness bar is.
+ * - news-first  : (default) every post must be anchored to a real, recent,
+ *                 sourced development. Missing why_now/sources/freshness BLOCKS.
+ * - mixed       : the same checks, but they only warn.
+ * - evergreen-ok: no freshness bar (timeless how-tos allowed).
+ */
+export const ContentModeSchema = z.enum(['news-first', 'mixed', 'evergreen-ok']);
+export type ContentMode = z.infer<typeof ContentModeSchema>;
+
 /** Parse a sheet boolean cell tolerantly. Unknown/blank => false. */
 export function parseSheetBoolean(raw: string | undefined): boolean {
   if (!raw) return false;
@@ -79,6 +89,10 @@ export const SettingsSchema = z.object({
    * render time; unknown values fall back to `auto`.
    */
   ART_DIRECTION: z.string().default('auto'),
+  /** Newsworthiness bar. Default `news-first`: no anchor + sources → no post. */
+  CONTENT_MODE: ContentModeSchema.catch('news-first'),
+  /** A story is "fresh" if a source was published within this many days. */
+  MAX_STORY_AGE_DAYS: z.number().int().positive().default(14),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -150,6 +164,8 @@ export function parseSettings(
     AUTO_GENERATE_WHEN_EMPTY: bool('AUTO_GENERATE_WHEN_EMPTY', true),
     MOTION_SLIDES: (raw.MOTION_SLIDES ?? '').trim().toLowerCase(),
     ART_DIRECTION: (raw.ART_DIRECTION ?? 'auto').trim().toLowerCase() || 'auto',
+    CONTENT_MODE: (raw.CONTENT_MODE ?? '').trim().toLowerCase(),
+    MAX_STORY_AGE_DAYS: num('MAX_STORY_AGE_DAYS', 14),
   });
 
   // Guard against inverted slide bounds.

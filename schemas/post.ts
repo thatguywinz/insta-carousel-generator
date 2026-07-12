@@ -115,6 +115,11 @@ export type Slide = z.infer<typeof SlideSchema>;
 export const SourceRefSchema = z.object({
   url: z.string().url(),
   description: z.string().max(200),
+  /**
+   * ISO date (YYYY-MM-DD) the source/story was published. Drives the freshness
+   * gate — a post whose newest source is older than MAX_STORY_AGE_DAYS is stale.
+   */
+  published_at: z.string().max(40).optional(),
 });
 export type SourceRef = z.infer<typeof SourceRefSchema>;
 
@@ -130,6 +135,12 @@ export const PostSchema = z
     /** Optional explicit art direction; overrides the ART_DIRECTION rotation. */
     art_direction: ArtDirectionSchema.optional(),
     slides: z.array(SlideSchema).min(3).max(20),
+    /**
+     * The newsworthiness anchor: what actually happened, when, and why a reader
+     * should care THIS WEEK. If you cannot write this honestly, the post is not
+     * worth publishing. Required in `news-first` CONTENT_MODE.
+     */
+    why_now: z.string().max(280).optional(),
     caption: z.string().min(1).max(2200),
     hashtags: z.array(z.string().min(1)).max(8),
     sources: z.array(SourceRefSchema).default([]),

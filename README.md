@@ -59,8 +59,16 @@ Three tabs, never renamed: `Instructions`, `Settings`, `Content`.
 `TARGET_AUDIENCE`, `ACCOUNT_GOAL`, `BRAND_NAME`, `INSTAGRAM_HANDLE`,
 `BRAND_COLORS`, `BRAND_STYLE`, `CONTENT_PILLARS`, `DEFAULT_CTA`, `POST_LANGUAGE`,
 `LOOKBACK_DAYS`, `MIN_SLIDES`, `MAX_SLIDES`, `PUBLISH_EXISTING_DRAFT_FIRST`,
-`AUTO_GENERATE_WHEN_EMPTY`, `MOTION_SLIDES`, `ART_DIRECTION`. `MODE` defaults safely
-to `TEST` when missing or unknown.
+`AUTO_GENERATE_WHEN_EMPTY`, `MOTION_SLIDES`, `ART_DIRECTION`, `CONTENT_MODE`,
+`MAX_STORY_AGE_DAYS`. `MODE` defaults safely to `TEST` when missing or unknown.
+
+- **`CONTENT_MODE`** — the newsworthiness bar. `news-first` (**default**) means a
+  post must carry a `why_now` anchor, at least one primary source, and a source
+  published within `MAX_STORY_AGE_DAYS`, or the run ships nothing. `mixed`
+  downgrades those to warnings; `evergreen-ok` drops the freshness bar entirely.
+  Generic listicle shapes ("7 AI prompts you need") always warn.
+- **`MAX_STORY_AGE_DAYS`** — how old a story may be and still count as news
+  (default `14`).
 
 - **`DEFAULT_CTA`** — the value-driven follow reason. It fills the closing `cta`
   slide's body when the author leaves it blank (the pill defaults to

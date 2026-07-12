@@ -296,6 +296,9 @@ function setSettings(mode: string, extra: Record<string, string> = {}): void {
     MAX_SLIDES: '8',
     BRAND_NAME: 'Test',
     INSTAGRAM_HANDLE: '@test',
+    // These tests exercise workflow mechanics with an evergreen fixture post;
+    // the newsworthiness bar is covered by tests/unit/newsworthiness.test.ts.
+    CONTENT_MODE: 'evergreen-ok',
     ...extra,
   }).map(([k, v]) => [k, v]);
 }

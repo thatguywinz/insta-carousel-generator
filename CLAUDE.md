@@ -56,8 +56,11 @@ Recommended operating sequence for a normal run:
 ```
 npm ci
 npm run healthcheck
+# RESEARCH FIRST: web-search what actually shipped in the last MAX_STORY_AGE_DAYS
+# and open the primary source (changelog / release notes / official announcement).
 npm run select-idea          # or, if queue empty, author runtime/idea-plan.json
 # author runtime/post-plan.json based on runtime/selection-context.json
+#   → must include why_now + sources[] with url/description/published_at
 npm run render               # renders runtime/slides/*.png + validation report
 # READ every runtime/slides/*.png yourself; fix copy/template if anything is off
 # write runtime/visual-approval.json {"approved":true,"notes":"..."}
@@ -66,25 +69,70 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
 
 `MODE_OVERRIDE=TEST npm run workflow:test` forces TEST regardless of the Sheet.
 
+### Research FIRST — before you author anything
+
+**This account covers what is genuinely NEW in AI.** You are not a tips blog. Every
+run starts by finding out what actually happened, not by imagining a topic.
+
+1. **Search before you write.** Use web search to find what shipped in the last
+   `MAX_STORY_AGE_DAYS` (default 14): model/tool releases, version bumps, pricing
+   or policy changes, notable benchmarks, new features in Claude / Claude Code /
+   OpenAI / Codex / Gemini / Grok / Llama / Mistral / new AI tools.
+2. **Go to the primary source** — the changelog, release notes, model card, docs,
+   or the company's own announcement. Not a rehash, not a rumour thread.
+3. **Record it**: every `post.sources[]` entry needs `url`, `description`, and
+   `published_at` (`YYYY-MM-DD`). This is what proves the story is real and fresh.
+4. **Write `post.why_now`** — one honest sentence: _what happened, when, and why a
+   reader should care this week_. **If you cannot write that sentence, do not post.**
+   Go find a real story instead.
+
+### The bar: is this actually worth posting?
+
+Kill the idea unless it clears all four. Posting nothing beats posting filler.
+
+- **New** — it happened recently and is anchored to a dated primary source.
+- **True** — the version numbers, dates, prices and benchmarks come from that source.
+- **Useful** — the reader can _do_ something with it (a workflow, a setting, a
+  "what this means for you"), not just "X happened".
+- **Non-obvious** — someone who follows AI casually would still learn something.
+
+**Auto-reject** (these are exactly what the account must never look like): "N AI
+tools/prompts you need", "mind-blowing AI hacks", "ultimate guide to X", "10x your
+workflow", timeless how-tos with no news peg, and anything you cannot source.
+`src/newsworthiness.ts` warns on these shapes (`LOW_VALUE_IDEA`).
+
+Evergreen how-tos are allowed **only when hung on a fresh peg** — "how to use the
+parallel subagents that shipped Tuesday", not "how to use AI better".
+
 ### Authoring rules (must follow)
 
-- **Value first, even for news.** Every carousel must leave the reader with
-  something they can _use_ — a takeaway, a workflow, a "what this means for you",
-  not just "X happened". Report the news, then make it actionable. Match `NICHE`,
-  `TARGET_AUDIENCE`, `ACCOUNT_GOAL`, `POST_LANGUAGE`.
+- **Enforced by validation** (`CONTENT_MODE=news-first` blocks the run):
+  `NO_WHY_NOW` (missing/thin `why_now`), `NO_SOURCE` (zero sources),
+  `NO_SOURCE_DATE` (no `published_at`), `STALE_STORY` (freshest source older than
+  `MAX_STORY_AGE_DAYS`). These are **errors, not suggestions** — a run that trips
+  them ships nothing, which is the intended outcome.
+- **Report the news, then make it usable.** Lead with what changed, then give the
+  takeaway/workflow. Match `NICHE`, `TARGET_AUDIENCE`, `ACCOUNT_GOAL`,
+  `POST_LANGUAGE`.
 - 5–8 slides normally, within `MIN_SLIDES`..`MAX_SLIDES`. First slide `cover`;
-  **last slide must be `cta`** (or `summary`) — `NO_CLOSER` is now a hard error.
+  **last slide must be `cta`** (or `summary`) — `NO_CLOSER` is a hard error.
 - Headlines ≤ ~10 words; bodies ~15–40 words. No generic AI filler, no unmet
   clickbait, minimal emoji, natural human wording that sounds like a person.
-- **Never invent** statistics, quotes, case studies, prices, laws, credentials.
-  If the topic needs current facts, research primary sources and put them in
-  `post.sources`; otherwise prefer evergreen practical content. A post with a hard
-  statistic/price and zero `sources` now fails validation (`UNSOURCED_CLAIM`).
+- **Never invent** statistics, quotes, case studies, prices, laws, version numbers,
+  release dates or credentials. A post with a hard statistic/price and zero
+  `sources` fails validation (`UNSOURCED_CLAIM`).
 - Do not repeat a recent topic/hook/framework — `src/similarity.ts` runs an
   automated dedup check; apply semantic judgment on top. Also **vary the
   `art_direction`** from recent posts (see below) so the feed never looks samey.
 - The workflow overrides `idea_id` and `idempotency_key`; your `post-plan.json`
   values for those are placeholders.
+
+### Authoring a new idea (when the queue is empty)
+
+`runtime/idea-plan.json` is `{idea, priority, content_pillar}`. **Research first**
+(above), then write the idea as the concrete story — "Claude Code ships parallel
+subagents", not "how to use AI agents". Set `priority: High` for something that
+shipped in the last few days; `Medium` otherwise. Never invent a release.
 
 ### Hook playbook (the cover is the whole game)
 
@@ -198,6 +246,9 @@ below the accessible minimum. Only write `visual-approval.json` once it passes.
 - `src/idea-selection.ts` — priority ordering, resumable rows, generated ideas.
 - `src/similarity.ts` — deterministic Jaccard + bigram dedup.
 - `src/research-validation.ts` — detects volatile claims needing sources.
+- `src/newsworthiness.ts` — the "is this worth posting?" bar: `why_now` anchor,
+  primary sources, story freshness (`MAX_STORY_AGE_DAYS`), listicle-filler
+  detection. Blocks the run in `CONTENT_MODE=news-first`.
 - `src/render.ts` — HTML/CSS → 1080×1350 PNG via Chromium; palette-only themes;
   brand-color role inference; in-page overflow/font metrics; CTA wiring.
 - `src/fonts.ts` — embedded `woff2` faces (Inter / Space Grotesk / Fraunces /

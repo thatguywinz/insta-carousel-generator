@@ -6,6 +6,7 @@ import { RenderedSlide, SLIDE_WIDTH, SLIDE_HEIGHT, MIN_BODY_FONT_PX } from './re
 import { inspectMp4 } from './motion.js';
 import { validateSlideBounds } from '../schemas/post.js';
 import { validateClaims } from './research-validation.js';
+import { validateNewsworthiness } from './newsworthiness.js';
 
 /**
  * Automated visual + copy validation. Runs BEFORE upload/publish. Failing
@@ -285,6 +286,20 @@ export function validateResearch(post: Post): ValidationReport {
   return { ok: issues.every((i) => i.severity !== 'error'), issues };
 }
 
+/**
+ * Newsworthiness gate: is this actually worth posting? Enforces the why_now
+ * anchor, a primary source, and story freshness per CONTENT_MODE.
+ */
+export function validateNews(post: Post, settings: Settings): ValidationReport {
+  const issues: ValidationIssue[] = validateNewsworthiness(post, settings).map((i) => ({
+    slide: null,
+    code: i.code,
+    message: i.message,
+    severity: i.severity,
+  }));
+  return { ok: issues.every((i) => i.severity !== 'error'), issues };
+}
+
 /** Validate render metrics from the in-page measurement. */
 export function validateMetrics(slides: RenderedSlide[]): ValidationReport {
   const issues: ValidationIssue[] = [];
@@ -436,6 +451,7 @@ export async function validateAll(
 ): Promise<ValidationReport> {
   const reports = [
     validatePostCopy(post, settings),
+    validateNews(post, settings),
     validateResearch(post),
     validateMetrics(slides),
     await validateImages(slides),
