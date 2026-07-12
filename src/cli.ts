@@ -14,7 +14,12 @@ import {
   readSettings,
   readContentRows,
 } from './content-tracker.js';
-import { selectUnusedIdea, selectResumable, markSelected } from './idea-selection.js';
+import {
+  selectUnusedIdea,
+  unusedSelectOptions,
+  selectResumable,
+  markSelected,
+} from './idea-selection.js';
 import { loadBrand, renderPost } from './render.js';
 import { validateAll } from './visual-validation.js';
 import { PostSchema, Post } from '../schemas/post.js';
@@ -163,7 +168,7 @@ async function cmdSelectIdea(): Promise<number> {
   const rows = await readContentRows(ctx);
 
   const resumable = selectResumable(rows);
-  const row = resumable ?? selectUnusedIdea(rows);
+  const row = resumable ?? selectUnusedIdea(rows, unusedSelectOptions(settings, cfg.timezone));
   if (!row) {
     console.log(
       'No UNUSED or in-progress idea available. Author runtime/idea-plan.json and run workflow.',

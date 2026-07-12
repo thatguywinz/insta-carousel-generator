@@ -74,10 +74,18 @@ npm run workflow             # selects/generates, renders, validates, uploads, d
 **This account covers what is genuinely NEW in AI.** You are not a tips blog. Every
 run starts by finding out what actually happened, not by imagining a topic.
 
-1. **Search before you write.** Use web search to find what shipped in the last
-   `MAX_STORY_AGE_DAYS` (default 14): model/tool releases, version bumps, pricing
-   or policy changes, notable benchmarks, new features in Claude / Claude Code /
-   OpenAI / Codex / Gemini / Grok / Llama / Mistral / new AI tools.
+1. **Search before you write — and race.** Being _first_ on a story is most of the
+   reach, so search **the last 24–48h first** (`BREAKING_WINDOW_HOURS`, default 48):
+   model/tool releases, version bumps, pricing or policy changes, notable
+   benchmarks, new features in Claude / Claude Code / OpenAI / Codex / Gemini /
+   Grok / Llama / Mistral / new AI tools. Only widen to `MAX_STORY_AGE_DAYS`
+   (default 14) if nothing broke in the window. A story older than the breaking
+   window still publishes but raises `SLOW_TO_POST` — take it as a nudge to go
+   find the fresher thing first.
+   - If something big broke **today**, post that, even if the queue holds older
+     ideas. Stale auto-generated queue entries expire automatically
+     (`selectUnusedIdea` skips Claude-sourced rows older than `MAX_STORY_AGE_DAYS`),
+     so a breaking story preempts the queue. Give a breaking idea `priority: High`.
 2. **Go to the primary source** — the changelog, release notes, model card, docs,
    or the company's own announcement. Not a rehash, not a rumour thread.
 3. **Record it**: every `post.sources[]` entry needs `url`, `description`, and
@@ -230,10 +238,23 @@ someone who just got value thinks "yes, I want the next one".
 ### Visual inspection is mandatory
 
 `npm run render` produces the exact bytes the workflow will upload (rendering is
-deterministic). Read each PNG. Check hierarchy, readability, spacing, alignment,
-clipping, contrast, branding, sequence, repetition, spelling. If anything is
-wrong, fix the copy or choose another template and re-render — do not shrink text
-below the accessible minimum. Only write `visual-approval.json` once it passes.
+deterministic). Read each PNG (and step the MP4s). Check hierarchy, readability,
+spacing, alignment, clipping, contrast, branding, sequence, repetition, spelling.
+If anything is wrong, fix the copy or choose another art direction and re-render —
+do not shrink text below the accessible minimum.
+
+**The scroll-stop test (the cover must earn the stop).** Before approving, look at
+slide 1 the way a stranger scrolling at speed would, and answer honestly:
+
+1. **Would I stop?** If it is merely "fine", it has failed. Fine gets scrolled past.
+2. **Is the hook legible in half a second?** One idea, front-loaded payoff, big type.
+3. **Does it look designed** — real display typeface, a deliberate graphic move,
+   the theme's logo — or does it look like a template with words dropped in?
+4. **Is the promise real?** The deck must pay off exactly what the cover claims.
+
+If it fails any of these, **rewrite the hook or change the art direction and
+re-render** — do not approve it. Shipping a forgettable post costs more than
+shipping nothing. Only write `visual-approval.json` once it genuinely passes.
 
 ---
 

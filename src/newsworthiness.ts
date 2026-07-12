@@ -131,7 +131,26 @@ export function validateNewsworthiness(
       message: `freshest source is ${Math.round(age)} days old (> MAX_STORY_AGE_DAYS ${settings.MAX_STORY_AGE_DAYS}) — this is not news any more; find a current story`,
       severity,
     });
+  } else if (age * 24 > settings.BREAKING_WINDOW_HOURS) {
+    // Fresh enough to publish, but the first-mover advantage is gone. Warn so the
+    // operator prefers a story that broke inside the window — being early is most
+    // of the reach.
+    issues.push({
+      code: 'SLOW_TO_POST',
+      message: `story is ~${Math.round(age * 24)}h old (> BREAKING_WINDOW_HOURS ${settings.BREAKING_WINDOW_HOURS}) — still publishable, but you are not first. Prefer something that broke in the last ${settings.BREAKING_WINDOW_HOURS}h if one exists.`,
+      severity: 'warning',
+    });
   }
 
   return issues;
+}
+
+/** True when a story broke inside the first-mover window (worth racing on). */
+export function isBreaking(
+  post: Post,
+  settings: Settings,
+  now: DateTime = DateTime.utc(),
+): boolean {
+  const age = freshestSourceAgeDays(post, now);
+  return age !== null && age * 24 <= settings.BREAKING_WINDOW_HOURS;
 }

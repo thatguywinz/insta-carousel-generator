@@ -22,14 +22,61 @@ function normalizePriority(raw: string): Priority {
   return 'Medium';
 }
 
+/** Parse a Sheet timestamp ("yyyy-MM-dd HH:mm:ss TZ"). Unparseable → null. */
+export function parseSheetStamp(raw: string, timezone: string): DateTime | null {
+  const s = (raw ?? '').trim();
+  if (!s) return null;
+  const dt = DateTime.fromFormat(s.replace(/\s+[A-Z]{2,5}$/, ''), 'yyyy-MM-dd HH:mm:ss', {
+    zone: timezone,
+  });
+  return dt.isValid ? dt : null;
+}
+
+export interface UnusedSelectOptions {
+  /**
+   * Expire auto-generated ideas older than this many days. News rots: a queued
+   * story from three weeks ago is no longer worth posting, and letting it drain
+   * first would block a story that just broke. Manual rows (the owner's explicit
+   * intent) never expire.
+   */
+  maxAgeDays?: number;
+  timezone?: string;
+  now?: DateTime;
+}
+
 /**
  * Choose the highest-priority UNUSED idea. Ties broken by oldest row
- * (lowest rowNumber, which reflects insertion order).
+ * (lowest rowNumber, which reflects insertion order). When `maxAgeDays` is set,
+ * stale Claude-generated ideas are skipped entirely — if that leaves nothing, the
+ * caller generates a fresh idea instead, which is how a breaking story preempts
+ * a stale queue.
  */
-export function selectUnusedIdea(rows: TrackedRow[]): TrackedRow | null {
-  const unused = rows.filter(
+export function selectUnusedIdea(
+  rows: TrackedRow[],
+  opts: UnusedSelectOptions = {},
+): TrackedRow | null {
+  const timezone = opts.timezone ?? 'utc';
+  const now = opts.now ?? DateTime.now().setZone(timezone);
+  let unused = rows.filter(
     (r) => r.status.trim().toUpperCase() === 'UNUSED' && r.idea.trim() !== '',
   );
+
+  if (opts.maxAgeDays !== undefined) {
+    const fresh = unused.filter((r) => {
+      if (r.source.trim().toLowerCase() !== 'claude') return true; // manual never expires
+      const added = parseSheetStamp(r.added_at, timezone);
+      if (!added) return true; // undated → keep (conservative)
+      return now.diff(added, 'days').days <= opts.maxAgeDays!;
+    });
+    if (fresh.length !== unused.length) {
+      log.info('skipped stale queued ideas', {
+        skipped: unused.length - fresh.length,
+        maxAgeDays: opts.maxAgeDays,
+      });
+    }
+    unused = fresh;
+  }
+
   if (unused.length === 0) return null;
   unused.sort((a, b) => {
     const pa = PRIORITY_RANK[normalizePriority(a.priority)] ?? 1;
@@ -38,6 +85,13 @@ export function selectUnusedIdea(rows: TrackedRow[]): TrackedRow | null {
     return a.rowNumber - b.rowNumber;
   });
   return unused[0] ?? null;
+}
+
+/** Options a caller derives from Settings for news-first queue expiry. */
+export function unusedSelectOptions(settings: Settings, timezone: string): UnusedSelectOptions {
+  return settings.CONTENT_MODE === 'news-first'
+    ? { maxAgeDays: settings.MAX_STORY_AGE_DAYS, timezone }
+    : { timezone };
 }
 
 /**

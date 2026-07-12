@@ -93,6 +93,12 @@ export const SettingsSchema = z.object({
   CONTENT_MODE: ContentModeSchema.catch('news-first'),
   /** A story is "fresh" if a source was published within this many days. */
   MAX_STORY_AGE_DAYS: z.number().int().positive().default(14),
+  /**
+   * The first-mover window. Stories sourced within this many hours are "breaking"
+   * — the ones worth racing on. Older-but-still-fresh stories only warn
+   * (`SLOW_TO_POST`), because being early is most of the reach.
+   */
+  BREAKING_WINDOW_HOURS: z.number().int().positive().default(48),
 });
 
 export type Settings = z.infer<typeof SettingsSchema>;
@@ -166,6 +172,7 @@ export function parseSettings(
     ART_DIRECTION: (raw.ART_DIRECTION ?? 'auto').trim().toLowerCase() || 'auto',
     CONTENT_MODE: (raw.CONTENT_MODE ?? '').trim().toLowerCase(),
     MAX_STORY_AGE_DAYS: num('MAX_STORY_AGE_DAYS', 14),
+    BREAKING_WINDOW_HOURS: num('BREAKING_WINDOW_HOURS', 48),
   });
 
   // Guard against inverted slide bounds.

@@ -68,7 +68,11 @@ Three tabs, never renamed: `Instructions`, `Settings`, `Content`.
   downgrades those to warnings; `evergreen-ok` drops the freshness bar entirely.
   Generic listicle shapes ("7 AI prompts you need") always warn.
 - **`MAX_STORY_AGE_DAYS`** — how old a story may be and still count as news
-  (default `14`).
+  (default `14`). Stale Claude-generated ideas left in the queue expire after this,
+  so a story that just broke preempts them (manual rows never expire).
+- **`BREAKING_WINDOW_HOURS`** — the first-mover window (default `48`). Being early
+  is most of the reach, so the operator searches this window first; a story older
+  than it still publishes but raises a `SLOW_TO_POST` warning.
 
 - **`DEFAULT_CTA`** — the value-driven follow reason. It fills the closing `cta`
   slide's body when the author leaves it blank (the pill defaults to

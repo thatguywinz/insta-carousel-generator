@@ -2,7 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { DateTime } from 'luxon';
-import { validateNewsworthiness, freshestSourceAgeDays } from '../../src/newsworthiness.js';
+import {
+  validateNewsworthiness,
+  freshestSourceAgeDays,
+  isBreaking,
+} from '../../src/newsworthiness.js';
 import { PostSchema, Post } from '../../schemas/post.js';
 import { parseSettings } from '../../schemas/settings.js';
 
@@ -73,6 +77,28 @@ describe('news-first gate', () => {
     const issues = validateNewsworthiness(post, newsSettings, NOW);
     const lowValue = issues.find((i) => i.code === 'LOW_VALUE_IDEA');
     expect(lowValue?.severity).toBe('warning');
+  });
+});
+
+describe('first-mover window', () => {
+  it('a story inside BREAKING_WINDOW_HOURS is clean (no SLOW_TO_POST)', () => {
+    const post = newsPost({
+      sources: [{ url: 'https://a.com', description: 'x', published_at: '2026-07-11' }], // 1d
+    });
+    const issues = validateNewsworthiness(post, newsSettings, NOW);
+    expect(issues.some((i) => i.code === 'SLOW_TO_POST')).toBe(false);
+    expect(isBreaking(post, newsSettings, NOW)).toBe(true);
+  });
+
+  it('warns SLOW_TO_POST when fresh but past the first-mover window', () => {
+    const post = newsPost({
+      sources: [{ url: 'https://a.com', description: 'x', published_at: '2026-07-05' }], // 7d
+    });
+    const issues = validateNewsworthiness(post, newsSettings, NOW);
+    const slow = issues.find((i) => i.code === 'SLOW_TO_POST');
+    expect(slow?.severity).toBe('warning'); // publishable, just not first
+    expect(issues.some((i) => i.severity === 'error')).toBe(false);
+    expect(isBreaking(post, newsSettings, NOW)).toBe(false);
   });
 });
 

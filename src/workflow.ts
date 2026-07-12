@@ -14,6 +14,7 @@ import { Post, PostSchema } from '../schemas/post.js';
 import {
   selectPublishableDraft,
   selectUnusedIdea,
+  unusedSelectOptions,
   selectResumable,
   selectVerifyRequired,
   markSelected,
@@ -223,7 +224,9 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     let source: 'Manual' | 'Claude';
 
     const resumable = selectResumable(rows);
-    const unused = resumable ? null : selectUnusedIdea(rows);
+    const unused = resumable
+      ? null
+      : selectUnusedIdea(rows, unusedSelectOptions(settings, cfg.timezone));
     if (resumable) {
       // Resume an already-selected row (two-phase run or crash recovery).
       selectedIdeaId = resumable.idea_id.trim() || (await markSelected(ctx, resumable));
