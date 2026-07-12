@@ -114,6 +114,58 @@ describe('copy validation', () => {
     expect(weak?.severity).toBe('warning');
     expect(report.ok).toBe(true);
   });
+
+  it('BLOCKS a generic AI phrase on the cover slide', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'This game-changer will help' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const hit = report.issues.find((i) => i.code === 'GENERIC_PHRASE' && i.slide === 1);
+    expect(hit?.severity).toBe('error');
+    expect(report.ok).toBe(false);
+  });
+
+  it('only WARNS on a generic phrase in a middle slide', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 2 ? { ...s, body: 'Let that sink in — ranges beat single quotes.' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const hit = report.issues.find((i) => i.code === 'GENERIC_PHRASE' && i.slide === 3);
+    expect(hit?.severity).toBe('warning');
+    expect(report.ok).toBe(true);
+  });
+
+  it('matches generic phrases through curly apostrophes', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'Here’s the kicker for pricing' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    expect(report.issues.some((i) => i.code === 'GENERIC_PHRASE' && i.slide === 1)).toBe(true);
+  });
+
+  it('warns when the cover headline has no number, subject, or tension word', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'Some thoughts on pricing work' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const weak = report.issues.find((i) => i.code === 'HOOK_WEAK');
+    expect(weak?.severity).toBe('warning');
+  });
+
+  it('does not flag a hook that carries a number or named tool', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'Claude Code ships 3 new agent tools' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    expect(report.issues.some((i) => i.code === 'HOOK_WEAK')).toBe(false);
+  });
+
+  it('warns when the caption first line exceeds the feed fold', () => {
+    const longFirst = 'a'.repeat(140) + '\nrest of the caption';
+    const report = validatePostCopy(PostSchema.parse({ ...post, caption: longFirst }), settings);
+    const fold = report.issues.find((i) => i.code === 'CAPTION_FOLD');
+    expect(fold?.severity).toBe('warning');
+  });
 });
 
 describe('research / claim validation', () => {

@@ -37,7 +37,7 @@ export function buildPreviewHtml(input: PreviewInput): string {
     : '';
 
   return `<!doctype html>
-<html lang="${esc(post.slides[0]?.kicker ? 'en' : 'en')}">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">

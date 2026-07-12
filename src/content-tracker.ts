@@ -61,7 +61,7 @@ export async function readSettings(ctx: SheetContext): Promise<Settings> {
     if (!key || key.startsWith('#')) continue;
     map[key] = (row[1] ?? '').toString();
   }
-  return parseSettings(map);
+  return parseSettings(map, (message) => log.warn(`settings: ${message}`));
 }
 
 /**

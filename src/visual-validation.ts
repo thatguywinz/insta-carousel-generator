@@ -46,7 +46,31 @@ const GENERIC_AI_PHRASES = [
   'in a nutshell',
   'the future is here',
   'game changer',
+  'game-changing',
+  'let that sink in',
+  "here's the kicker",
+  'the best part?',
+  'mind-blowing',
+  "you won't believe",
+  'stop scrolling',
+  'elevate your',
+  'stay tuned',
 ];
+
+/** Normalize curly quotes so phrase matching catches typographic apostrophes. */
+function normalizeQuotes(text: string): string {
+  return text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
+}
+
+/** Signals that a cover headline has a real hook: a number, a named subject, or tension. */
+const HOOK_NUMBER = /\d/;
+const HOOK_SUBJECT =
+  /\b(claude|anthropic|gpt-?\d*|chatgpt|openai|codex|gemini|deepmind|grok|xai|llama|meta|mistral|copilot|cursor|windsurf|sora|deepseek|qwen|ai)\b/i;
+const HOOK_TENSION =
+  /\b(just|new|stop|wrong|nobody|everyone|secret|mistake|why|how|vs|versus|before|after|changed?|changes|killed?|kills|beats?|beaten|free|broke|breaking|leaked?|drops?|dropped|ships?|shipped|inside|truth|actually|real|not|never|always|now|don'?t|won'?t|this)\b/i;
+
+/** Instagram shows roughly this many caption chars before truncating with "…more". */
+const CAPTION_FOLD_CHARS = 125;
 
 function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
@@ -158,21 +182,67 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
     });
   }
 
-  // Generic AI phrasing (warning only).
-  const allCopy = (
-    post.caption +
-    ' ' +
-    post.slides.map((s) => s.headline + ' ' + (s.body ?? '')).join(' ')
-  ).toLowerCase();
+  // Generic AI phrasing. On the cover and the closer — the two slides that win
+  // or lose the scroll — slop is a hard error; elsewhere (and in the caption)
+  // it warns so the operator applies judgment.
+  post.slides.forEach((slide, i) => {
+    const copy = normalizeQuotes(
+      [slide.headline, slide.body, slide.kicker, slide.myth, slide.reality, slide.mistake]
+        .filter(Boolean)
+        .join(' '),
+    ).toLowerCase();
+    const critical = i === 0 || i === post.slides.length - 1;
+    for (const phrase of GENERIC_AI_PHRASES) {
+      if (copy.includes(phrase)) {
+        issues.push({
+          slide: i + 1,
+          code: 'GENERIC_PHRASE',
+          message: `contains generic phrase: "${phrase}"`,
+          severity: critical ? 'error' : 'warning',
+        });
+      }
+    }
+  });
+  const captionCopy = normalizeQuotes(post.caption).toLowerCase();
   for (const phrase of GENERIC_AI_PHRASES) {
-    if (allCopy.includes(phrase)) {
+    if (captionCopy.includes(phrase)) {
       issues.push({
         slide: null,
         code: 'GENERIC_PHRASE',
-        message: `contains generic phrase: "${phrase}"`,
+        message: `caption contains generic phrase: "${phrase}"`,
         severity: 'warning',
       });
     }
+  }
+
+  // Hook lint: a cover headline with no number, no named tool/model and no
+  // tension word rarely stops a scroll. Warning only — judgment stays human.
+  const coverHeadline = post.slides[0]?.headline ?? '';
+  if (
+    post.slides[0]?.type === 'cover' &&
+    !HOOK_NUMBER.test(coverHeadline) &&
+    !HOOK_SUBJECT.test(coverHeadline) &&
+    !HOOK_TENSION.test(normalizeQuotes(coverHeadline))
+  ) {
+    issues.push({
+      slide: 1,
+      code: 'HOOK_WEAK',
+      message:
+        'cover headline has no number, named tool, or tension word — consider a stronger hook',
+      severity: 'warning',
+    });
+  }
+
+  // Caption fold: the first line doubles as a second hook and is cut at ~125
+  // chars before "…more".
+  const firstLine = post.caption.split('\n', 1)[0] ?? '';
+  if (firstLine.length > CAPTION_FOLD_CHARS) {
+    issues.push({
+      slide: null,
+      code: 'CAPTION_FOLD',
+      message: `caption first line is ${firstLine.length} chars (> ${CAPTION_FOLD_CHARS}); it will be truncated in the feed`,
+      severity: 'warning',
+    });
   }
 
   // Emoji density in caption.

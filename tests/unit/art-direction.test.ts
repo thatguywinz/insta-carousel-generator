@@ -40,6 +40,23 @@ describe('art-direction registry', () => {
       expect(ad.motionCss).toContain('.slide.motion');
     }
   });
+
+  it('every direction animates the cover underline (settled-at-t0 draw)', () => {
+    expect(MOTION_KEYFRAMES).toContain('ad-underline');
+    // The draw must rest at full width so frame 0 is a complete poster.
+    expect(MOTION_KEYFRAMES).toMatch(/ad-underline \{ 0%,100%\{transform:scaleX\(1\)\}/);
+    for (const name of ART_DIRECTIONS) {
+      expect(artDirection(name).motionCss).toContain('ad-underline');
+    }
+  });
+
+  it('every direction upsizes sparse interior slides so points never float in a void', () => {
+    for (const name of ART_DIRECTIONS) {
+      const css = artDirection(name).css;
+      expect(css).toContain(`.ad-${name}.slide-numbered-point .content`);
+      expect(css).toContain('gap: 44px');
+    }
+  });
 });
 
 describe('resolveArtDirection precedence', () => {

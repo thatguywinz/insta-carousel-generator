@@ -43,11 +43,12 @@ const GRAIN =
  */
 export const MOTION_KEYFRAMES = `
   @keyframes bg-shimmer { 0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%} }
-  @keyframes blob-a { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(46px,-34px) scale(1.08)} }
-  @keyframes blob-b { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-40px,30px) scale(1.07)} }
+  @keyframes blob-a { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(72px,-52px) scale(1.12)} }
+  @keyframes blob-b { 0%,100%{transform:translate(0,0) scale(1)} 50%{transform:translate(-64px,46px) scale(1.10)} }
   @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-  @keyframes hl-glow { 0%,100%{text-shadow:0 0 0 color-mix(in srgb, var(--c-accent) 0%, transparent)} 50%{text-shadow:0 0 40px color-mix(in srgb, var(--c-accent) 55%, transparent)} }
-  @keyframes kicker-pulse { 0%,100%{opacity:.78} 50%{opacity:1} }
+  @keyframes hl-glow { 0%,100%{text-shadow:0 0 0 color-mix(in srgb, var(--c-accent) 0%, transparent)} 50%{text-shadow:0 0 56px color-mix(in srgb, var(--c-accent) 70%, transparent)} }
+  /* Rests at full opacity so frame 0 (the poster) matches the static render. */
+  @keyframes kicker-pulse { 0%,100%{opacity:1} 50%{opacity:.55} }
   @keyframes swipe-bob { 0%,100%{transform:translateX(0);opacity:.72} 50%{transform:translateX(16px);opacity:1} }
   /* One-directional light sweep; the bar (≤50% wide, ~-14% start) is fully
      off-canvas at BOTH ends (-100% → 280% of its own width) so the loop
@@ -57,12 +58,15 @@ export const MOTION_KEYFRAMES = `
      height, useless for a 3px line). The element sits at top:0; -60px→1380px
      clears above the top and below the 1350px bottom at both ends. */
   @keyframes ad-scan { from{transform:translateY(-60px)} to{transform:translateY(1380px)} }
-  @keyframes ad-breathe { 0%,100%{transform:scale(1);opacity:.72} 50%{transform:scale(1.14);opacity:1} }
-  @keyframes ad-drift { 0%,100%{transform:translate(0,0)} 50%{transform:translate(0,-26px)} }
+  @keyframes ad-breathe { 0%,100%{transform:scale(1);opacity:.72} 50%{transform:scale(1.22);opacity:1} }
+  @keyframes ad-drift { 0%,100%{transform:translate(0,0)} 50%{transform:translate(0,-48px)} }
   /* Tiled-pattern crawl: shift by exactly one tile (per-element --crawl) so the
      pattern returns to itself at the seam. Default matches a 60px grid. */
   @keyframes ad-crawl { from{background-position:0 0} to{background-position:0 var(--crawl,-60px)} }
   @keyframes ad-blink { 0%,45%{opacity:1} 50%,95%{opacity:.15} 100%{opacity:1} }
+  /* Cover-underline draw: full width at t=0 (a complete poster), retracts and
+     redraws mid-loop. Shrink-only, so nothing can clip. */
+  @keyframes ad-underline { 0%,100%{transform:scaleX(1)} 45%{transform:scaleX(0.12)} }
 `;
 
 /**
@@ -79,9 +83,29 @@ export const BASELINE_MOTION_CSS = `
   .slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
 `;
 
-/** A soft diagonal light bar sized to sweep across the whole slide (decor). */
+/** A soft diagonal light bar sized to sweep across the whole slide (decor).
+ *  Deliberately strong: at feed size, after Instagram's compression, a subtle
+ *  sweep reads as nothing at all. */
 function sweepBar(): string {
-  return `background: linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--c-accent) 26%, transparent) 45%, color-mix(in srgb, #fff 30%, transparent) 50%, color-mix(in srgb, var(--c-accent) 26%, transparent) 55%, transparent 100%);`;
+  return `background: linear-gradient(100deg, transparent 0%, color-mix(in srgb, var(--c-accent) 42%, transparent) 45%, color-mix(in srgb, #fff 48%, transparent) 50%, color-mix(in srgb, var(--c-accent) 42%, transparent) 55%, transparent 100%);`;
+}
+
+/**
+ * Interior "sparse" slides (numbered/step/standard): a bigger type scale, more
+ * vertical rhythm and an optional bottom anchor ornament so a short point never
+ * floats in a void. Dense layouts (myth/comparison/checklist pairs) keep the
+ * tighter base scale.
+ */
+function interior(S: string, ornament = ''): string {
+  const sel = (suffix: string): string =>
+    ['numbered-point', 'standard-content', 'step']
+      .map((t) => `${S}.slide-${t} ${suffix}`)
+      .join(', ');
+  return `
+    ${sel('.content')} { gap: 44px; }
+    ${sel('.body')} { font-size: 41px; line-height: 1.45; }
+    ${ornament ? `${sel('.content::after')} { ${ornament} }` : ''}
+  `;
 }
 
 /* ─────────────────────────────── EDITORIAL ─────────────────────────────── */
@@ -97,18 +121,20 @@ function editorial(): ResolvedArtDirection {
     ${S} .body { font-family: var(--font); }
     ${S} .kicker { font-family: var(--font-mono); font-weight: 500; font-size: 26px; letter-spacing: 6px; color: var(--c-muted); background: none; padding: 0; }
     ${S} .decor-1 { inset: 40px; border: 2px solid color-mix(in srgb, var(--c-text) 22%, transparent); }
-    ${S} .decor-2 { top: 0; bottom: 0; width: 46%; left: -10%; ${sweepBar()} opacity: .5; }
+    ${S} .decor-2 { top: 0; bottom: 0; width: 46%; left: -10%; ${sweepBar()} opacity: .65; }
     ${S} .decor-3 { inset: 0; --crawl: -140px; background: ${GRAIN}; background-size: 140px 140px; opacity: .05; mix-blend-mode: multiply; }
     ${S}.slide-cover .content.cover { justify-content: center; gap: 34px; }
     ${S}.slide-cover .headline { font-size: 112px; line-height: 1.0; }
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 132px; height: 4px; margin-top: 40px; background: var(--c-accent); }
     ${S}.slide-cover .swipe { align-self: flex-start; margin-top: 6px; padding: 0; border: none; background: none; color: var(--c-muted); font-family: var(--font-mono); font-size: 26px; letter-spacing: 3px; }
-    ${S} .headline.small { font-size: 60px; }
+    ${S} .headline.small { font-size: 68px; }
+    ${interior(S, "content: ''; width: 132px; height: 4px; background: var(--c-accent);")}
     `,
     motionCss: `
       ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
       ${S}.slide.motion .decor-3 { animation: ad-crawl 2s steps(6) infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline::after { animation: ad-underline 2s ease-in-out infinite; transform-origin: 0 50%; }
       ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
@@ -126,7 +152,7 @@ function brutalist(): ResolvedArtDirection {
       background:
         linear-gradient(color-mix(in srgb, var(--c-text) 8%, transparent) 2px, transparent 2px) 0 0 / 100% 120px,
         linear-gradient(90deg, color-mix(in srgb, var(--c-text) 8%, transparent) 2px, transparent 2px) 0 0 / 120px 100%; }
-    ${S} .decor-2 { top: 0; bottom: 0; width: 40%; left: -8%; ${sweepBar()} opacity: .35; }
+    ${S} .decor-2 { top: 0; bottom: 0; width: 40%; left: -8%; ${sweepBar()} opacity: .5; }
     ${S} .decor-3 { width: 220px; height: 220px; right: -40px; top: -40px; border: 10px solid var(--c-accent); }
     ${S} .headline { font-family: var(--font-display); font-weight: 700; letter-spacing: -1.5px; }
     ${S} .body { font-family: var(--font); }
@@ -136,13 +162,16 @@ function brutalist(): ResolvedArtDirection {
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 180px; height: 12px; margin-top: 30px; background: var(--c-accent); }
     ${S} .badge { border-radius: 0 !important; font-family: var(--font-mono); box-shadow: none !important; }
     ${S} .cta-pill, ${S} .swipe { border-radius: 0 !important; font-family: var(--font-mono); }
-    ${S} .headline.small { font-size: 56px; }
+    ${S} .headline.small { font-size: 62px; }
+    ${interior(S, "content: ''; width: 64px; height: 16px; background: var(--c-accent);")}
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: ad-crawl 2s linear infinite; }
       ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
       ${S}.slide.motion .decor-3 { animation: ad-blink 2s infinite; }
       ${S}.slide.motion .kicker { animation: ad-blink 1s infinite; }
+      ${S}.slide.motion.slide-cover .headline::after { animation: ad-underline 2s ease-in-out infinite; transform-origin: 0 50%; }
+      ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
 }
@@ -163,7 +192,7 @@ function spotlight(): ResolvedArtDirection {
     ${S} .body { font-family: var(--font); }
     ${S} .decor-1 { width: 760px; height: 760px; border-radius: 50%; top: -220px; left: 50%; margin-left: -380px;
       background: radial-gradient(circle, color-mix(in srgb, var(--c-accent) 40%, transparent), transparent 62%); }
-    ${S} .decor-2 { top: 0; bottom: 0; width: 44%; left: -12%; ${sweepBar()} opacity: .55; }
+    ${S} .decor-2 { top: 0; bottom: 0; width: 44%; left: -12%; ${sweepBar()} opacity: .7; }
     ${S} .decor-3 { width: 640px; height: 640px; border-radius: 50%; top: 40px; left: 50%; margin-left: -320px;
       border: 2px solid color-mix(in srgb, var(--c-accent) 30%, transparent); }
     ${S}.slide-cover .content.cover { justify-content: center; align-items: center; text-align: center; gap: 34px; }
@@ -173,13 +202,15 @@ function spotlight(): ResolvedArtDirection {
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 120px; height: 5px; margin: 40px auto 0; border-radius: 4px; background: var(--c-accent); }
     ${S}.slide-cover .body { color: var(--c-muted); max-width: 800px; }
     ${S}.slide-cover .swipe { align-self: center; }
-    ${S} .headline.small { font-size: 60px; }
+    ${S} .headline.small { font-size: 68px; }
+    ${interior(S)}
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: ad-breathe 2s ease-in-out infinite; transform-origin: 50% 40%; }
       ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
       ${S}.slide.motion .decor-3 { animation: ad-drift 2s ease-in-out infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline::after { animation: ad-underline 2s ease-in-out infinite; transform-origin: 50% 50%; }
       ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
@@ -199,19 +230,22 @@ function kinetic(): ResolvedArtDirection {
     ${S} .kicker { font-family: var(--font-display); font-weight: 700; font-size: 30px; letter-spacing: 4px; text-transform: uppercase; color: var(--c-on-primary); background: var(--c-primary); padding: 10px 22px; border-radius: 6px; display: inline-block; }
     ${S} .decor-1 { width: 680px; height: 680px; border-radius: 50%; right: -240px; bottom: -240px;
       background: radial-gradient(circle, color-mix(in srgb, var(--c-accent) 26%, transparent), transparent 66%); }
-    ${S} .decor-2 { top: 0; bottom: 0; width: 50%; left: -14%; ${sweepBar()} opacity: .6; }
+    ${S} .decor-2 { top: 0; bottom: 0; width: 50%; left: -14%; ${sweepBar()} opacity: .75; }
     ${S} .decor-3 { width: 420px; height: 420px; right: -150px; top: -150px; background: var(--c-accent); opacity: .16; }
     ${S}.slide-cover .content.cover { justify-content: center; gap: 26px; }
     ${S}.slide-cover .headline { font-size: 150px; line-height: 0.92; text-transform: uppercase; letter-spacing: -5px; }
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 200px; height: 18px; margin-top: 26px; background: var(--c-accent); }
     ${S}.slide-cover .swipe { align-self: flex-start; }
-    ${S} .headline.small { font-size: 64px; text-transform: uppercase; letter-spacing: -1.5px; }
+    ${S} .headline.small { font-size: 72px; text-transform: uppercase; letter-spacing: -1.5px; }
+    ${interior(S)}
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: blob-a 2s ease-in-out infinite; }
       ${S}.slide.motion .decor-2 { animation: ad-sweep 2s linear infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline::after { animation: ad-underline 2s ease-in-out infinite; transform-origin: 0 50%; }
       ${S}.slide.motion .kicker { animation: kicker-pulse 2s ease-in-out infinite; }
+      ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
 }
@@ -244,13 +278,19 @@ function blueprint(): ResolvedArtDirection {
     ${S}.slide-cover .headline { font-size: 104px; line-height: 1.0; }
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 100%; height: 2px; margin-top: 34px; background: color-mix(in srgb, var(--c-accent) 45%, transparent); }
     ${S}.slide-cover .swipe { align-self: flex-start; font-family: var(--font-mono); background: none; border: 2px solid color-mix(in srgb, var(--c-accent) 45%, transparent); color: var(--c-ink-accent); }
-    ${S} .headline.small { font-size: 58px; }
+    ${S} .headline.small { font-size: 66px; }
+    ${interior(
+      S,
+      "content: '+ + +'; font-family: var(--font-mono); font-size: 28px; letter-spacing: 12px; color: color-mix(in srgb, var(--c-accent) 55%, transparent);",
+    )}
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: ad-crawl 2s linear infinite; }
       ${S}.slide.motion .decor-2 { animation: ad-scan 2s linear infinite; }
       ${S}.slide.motion .decor-3 { animation: kicker-pulse 2s ease-in-out infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline::after { animation: ad-underline 2s ease-in-out infinite; transform-origin: 0 50%; }
+      ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };
 }
@@ -274,13 +314,15 @@ function poster(): ResolvedArtDirection {
     ${S}.slide-cover .headline { font-size: 128px; line-height: 0.95; text-transform: uppercase; letter-spacing: -4px; }
     ${S}.slide-cover .headline::after { content: ''; display: block; width: 220px; height: 20px; margin-top: 32px; background: var(--c-accent); }
     ${S}.slide-cover .swipe { align-self: flex-start; background: var(--c-primary); color: var(--c-on-primary); border: none; }
-    ${S} .headline.small { font-size: 62px; text-transform: uppercase; letter-spacing: -1.5px; }
+    ${S} .headline.small { font-size: 70px; text-transform: uppercase; letter-spacing: -1.5px; }
+    ${interior(S)}
     `,
     motionCss: `
       ${S}.slide.motion .decor-1 { animation: ad-drift 2s ease-in-out infinite; }
       ${S}.slide.motion .decor-2 { animation: blob-b 2s ease-in-out infinite; }
       ${S}.slide.motion .decor-3 { animation: kicker-pulse 2s ease-in-out infinite; }
       ${S}.slide.motion.slide-cover .headline { animation: hl-glow 2s ease-in-out infinite; }
+      ${S}.slide.motion.slide-cover .headline::after { animation: ad-underline 2s ease-in-out infinite; transform-origin: 0 50%; }
       ${S}.slide.motion .swipe { animation: swipe-bob 1s ease-in-out infinite; }
     `,
   };

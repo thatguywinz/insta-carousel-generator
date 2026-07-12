@@ -64,8 +64,8 @@ to `TEST` when missing or unknown.
 
 - **`DEFAULT_CTA`** — the value-driven follow reason. It fills the closing `cta`
   slide's body when the author leaves it blank (the pill defaults to
-  `Follow @handle`). Make it specific, e.g. *"Follow @you — every new AI tool broken
-  down in a quick carousel"*, not "follow for more".
+  `Follow @handle`). Make it specific, e.g. _"Follow @you — every new AI tool broken
+  down in a quick carousel"_, not "follow for more".
 - **`ART_DIRECTION`** — the visual style rotation. `auto` (**default**) picks a
   style per idea from the six systems (`editorial`, `brutalist`, `spotlight`,
   `kinetic`, `blueprint`, `poster`) so every post looks different; or pin one style

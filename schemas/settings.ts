@@ -31,6 +31,29 @@ export function parseSheetBoolean(raw: string | undefined): boolean {
   return v === 'true' || v === 'yes' || v === 'y' || v === '1' || v === 'on';
 }
 
+const TRUE_WORDS = new Set(['true', 'yes', 'y', '1', 'on']);
+const FALSE_WORDS = new Set(['false', 'no', 'n', '0', 'off']);
+
+/**
+ * Tri-state boolean: an explicit true/false word, or null when the cell is
+ * missing, blank, or garbage (e.g. accidentally pasted text). Callers apply
+ * their documented default on null instead of silently flipping to false.
+ */
+export function parseSheetBooleanStrict(raw: string | undefined): boolean | null {
+  if (raw === undefined) return null;
+  const v = raw.trim().toLowerCase();
+  if (TRUE_WORDS.has(v)) return true;
+  if (FALSE_WORDS.has(v)) return false;
+  return null;
+}
+
+/**
+ * DEFAULT_CTA is rendered verbatim as the CTA slide's body when the author
+ * leaves it empty, so an accidentally pasted paragraph would ship on a real
+ * slide. Anything longer than a short follow reason is rejected with a warning.
+ */
+export const MAX_DEFAULT_CTA_CHARS = 220;
+
 export const SettingsSchema = z.object({
   MODE: ModeSchema.catch('TEST'),
   NICHE: z.string().default(''),
@@ -63,17 +86,53 @@ export type Settings = z.infer<typeof SettingsSchema>;
 /**
  * Build a validated Settings object from a raw key/value map.
  * MODE defaults safely to TEST when missing, malformed or unknown.
+ *
+ * Malformed cells (pasted text in a numeric/boolean cell, an overlong
+ * DEFAULT_CTA) fall back to their documented defaults and are reported through
+ * `onWarning` so a corrupted Sheet is loud in the logs instead of silent.
  */
-export function parseSettings(raw: Record<string, string>): Settings {
+export function parseSettings(
+  raw: Record<string, string>,
+  onWarning?: (message: string) => void,
+): Settings {
+  const warn = (message: string): void => onWarning?.(message);
+
   const num = (key: string, fallback: number): number => {
     const v = raw[key];
     if (v === undefined || v.trim() === '') return fallback;
     const n = Number(v.trim());
-    return Number.isFinite(n) ? n : fallback;
+    if (!Number.isFinite(n)) {
+      warn(`${key} is not a number ("${v.trim().slice(0, 40)}…" ignored); using ${fallback}`);
+      return fallback;
+    }
+    return n;
   };
 
+  const bool = (key: string, fallback: boolean): boolean => {
+    const v = raw[key];
+    const parsed = parseSheetBooleanStrict(v);
+    if (parsed !== null) return parsed;
+    if (v !== undefined && v.trim() !== '') {
+      warn(`${key} is not TRUE/FALSE ("${v.trim().slice(0, 40)}…" ignored); using ${fallback}`);
+    }
+    return fallback;
+  };
+
+  const modeRaw = (raw.MODE ?? '').trim().toUpperCase();
+  if (modeRaw && modeRaw !== 'TEST' && modeRaw !== 'LIVE') {
+    warn(`MODE "${modeRaw.slice(0, 20)}" is not TEST/LIVE; defaulting to TEST`);
+  }
+
+  let defaultCta = raw.DEFAULT_CTA ?? '';
+  if (defaultCta.trim().length > MAX_DEFAULT_CTA_CHARS) {
+    warn(
+      `DEFAULT_CTA is ${defaultCta.trim().length} chars (> ${MAX_DEFAULT_CTA_CHARS}) — it looks like pasted text, not a follow reason; ignoring it`,
+    );
+    defaultCta = '';
+  }
+
   const parsed = SettingsSchema.parse({
-    MODE: (raw.MODE ?? '').trim().toUpperCase(),
+    MODE: modeRaw,
     NICHE: raw.NICHE ?? '',
     TARGET_AUDIENCE: raw.TARGET_AUDIENCE ?? '',
     ACCOUNT_GOAL: raw.ACCOUNT_GOAL ?? '',
@@ -82,16 +141,13 @@ export function parseSettings(raw: Record<string, string>): Settings {
     BRAND_COLORS: raw.BRAND_COLORS ?? '',
     BRAND_STYLE: raw.BRAND_STYLE ?? '',
     CONTENT_PILLARS: raw.CONTENT_PILLARS ?? '',
-    DEFAULT_CTA: raw.DEFAULT_CTA ?? '',
+    DEFAULT_CTA: defaultCta,
     POST_LANGUAGE: (raw.POST_LANGUAGE ?? 'en').trim() || 'en',
     LOOKBACK_DAYS: num('LOOKBACK_DAYS', 30),
     MIN_SLIDES: num('MIN_SLIDES', 6),
     MAX_SLIDES: num('MAX_SLIDES', 8),
-    PUBLISH_EXISTING_DRAFT_FIRST:
-      parseSheetBoolean(raw.PUBLISH_EXISTING_DRAFT_FIRST) ||
-      raw.PUBLISH_EXISTING_DRAFT_FIRST === undefined,
-    AUTO_GENERATE_WHEN_EMPTY:
-      parseSheetBoolean(raw.AUTO_GENERATE_WHEN_EMPTY) || raw.AUTO_GENERATE_WHEN_EMPTY === undefined,
+    PUBLISH_EXISTING_DRAFT_FIRST: bool('PUBLISH_EXISTING_DRAFT_FIRST', true),
+    AUTO_GENERATE_WHEN_EMPTY: bool('AUTO_GENERATE_WHEN_EMPTY', true),
     MOTION_SLIDES: (raw.MOTION_SLIDES ?? '').trim().toLowerCase(),
     ART_DIRECTION: (raw.ART_DIRECTION ?? 'auto').trim().toLowerCase() || 'auto',
   });

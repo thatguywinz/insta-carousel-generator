@@ -62,4 +62,49 @@ describe('settings parsing', () => {
     expect(parseSheetBoolean('')).toBe(false);
     expect(parseSheetBoolean(undefined)).toBe(false);
   });
+
+  it('treats an EMPTY boolean cell as missing (documented default true)', () => {
+    const s = parseSettings({ PUBLISH_EXISTING_DRAFT_FIRST: '', AUTO_GENERATE_WHEN_EMPTY: '  ' });
+    expect(s.PUBLISH_EXISTING_DRAFT_FIRST).toBe(true);
+    expect(s.AUTO_GENERATE_WHEN_EMPTY).toBe(true);
+  });
+
+  it('falls back to the default and WARNS when a boolean cell contains pasted text', () => {
+    const warnings: string[] = [];
+    const s = parseSettings(
+      { AUTO_GENERATE_WHEN_EMPTY: 'Also attached are the screenshots of the area' },
+      (m) => warnings.push(m),
+    );
+    expect(s.AUTO_GENERATE_WHEN_EMPTY).toBe(true);
+    expect(warnings.some((w) => w.includes('AUTO_GENERATE_WHEN_EMPTY'))).toBe(true);
+  });
+
+  it('warns when a numeric cell contains pasted text', () => {
+    const warnings: string[] = [];
+    const s = parseSettings({ MAX_SLIDES: 'could you make it scroll down like a video' }, (m) =>
+      warnings.push(m),
+    );
+    expect(s.MAX_SLIDES).toBe(8);
+    expect(warnings.some((w) => w.includes('MAX_SLIDES'))).toBe(true);
+  });
+
+  it('rejects an overlong DEFAULT_CTA (pasted text) with a warning', () => {
+    const warnings: string[] = [];
+    const pasted = 'x'.repeat(300);
+    const s = parseSettings({ DEFAULT_CTA: pasted }, (m) => warnings.push(m));
+    expect(s.DEFAULT_CTA).toBe('');
+    expect(warnings.some((w) => w.includes('DEFAULT_CTA'))).toBe(true);
+  });
+
+  it('keeps a normal short DEFAULT_CTA untouched', () => {
+    const cta = 'Every new AI tool, broken down. Follow @realestgarg for the next one.';
+    expect(parseSettings({ DEFAULT_CTA: cta }).DEFAULT_CTA).toBe(cta);
+  });
+
+  it('warns on an unknown MODE while defaulting to TEST', () => {
+    const warnings: string[] = [];
+    const s = parseSettings({ MODE: 'PRODUCTION' }, (m) => warnings.push(m));
+    expect(s.MODE).toBe('TEST');
+    expect(warnings.some((w) => w.includes('MODE'))).toBe(true);
+  });
 });

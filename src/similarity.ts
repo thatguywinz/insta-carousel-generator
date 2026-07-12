@@ -132,13 +132,15 @@ export function checkSimilarity(
 
   let bestJaccard = 0;
   let bestDice = 0;
+  let bestCombined = -1;
   let mostSimilar: string | null = null;
 
   for (const item of corpus) {
     const j = jaccard(candidate, item);
     const d = diceBigram(candidate, item);
     const combined = Math.max(j, d);
-    if (combined > Math.max(bestJaccard, bestDice)) {
+    if (combined > bestCombined) {
+      bestCombined = combined;
       mostSimilar = item;
     }
     bestJaccard = Math.max(bestJaccard, j);
