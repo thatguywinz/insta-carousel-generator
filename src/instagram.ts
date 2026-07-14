@@ -247,16 +247,24 @@ export async function getMedia(
   };
 }
 
-/** List recent media ids for the account (used for ambiguous-publish verification). */
+/**
+ * List recent media ids for the account (used for ambiguous-publish
+ * verification). Returns `null` when the API call itself fails — callers in
+ * the recovery path MUST treat that as "inconclusive", never as "no media":
+ * a rate-limited/expired-token response is not proof of non-publication.
+ */
 export async function listRecentMedia(
   ig: IgClient,
   limit = 10,
-): Promise<
-  Array<{ id: string; caption: string | null; permalink: string | null; timestamp: string | null }>
-> {
+): Promise<Array<{
+  id: string;
+  caption: string | null;
+  permalink: string | null;
+  timestamp: string | null;
+}> | null> {
   const url = `${ig.base}/${ig.userId}/media?fields=id,caption,permalink,timestamp&limit=${limit}&access_token=${encodeURIComponent(ig.token)}`;
   const res = await ig.http.get(url);
-  if (res.status !== 200) return [];
+  if (res.status !== 200) return null;
   const data =
     (
       res.json as {

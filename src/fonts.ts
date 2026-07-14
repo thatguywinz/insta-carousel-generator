@@ -10,10 +10,12 @@ import { log } from './logger.js';
  * and prepended to the base stylesheet so rendering stays fully offline.
  *
  * Art directions pick faces via the exposed CSS variables:
- *   --font          Inter          (body / default)
- *   --font-display  Space Grotesk  (bold modern grotesk headlines)
- *   --font-serif    Fraunces       (high-contrast editorial serif)
- *   --font-mono     Space Mono     (raw technical / brutalist)
+ *   --font           Inter          (body / default)
+ *   --font-display   Space Grotesk  (bold modern grotesk headlines)
+ *   --font-serif     Fraunces       (high-contrast editorial serif; 600/900 + 600 italic)
+ *   --font-mono      Space Mono     (raw technical / brutalist)
+ *   --font-condensed Anton          (ultra-heavy condensed display — kinetic)
+ *   --font-black     Archivo Black  (ultra-heavy wide display — poster)
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -33,8 +35,12 @@ const FACES: FaceSpec[] = [
   { family: 'Space Grotesk', weight: 500, style: 'normal', file: 'SpaceGrotesk-500.woff2' },
   { family: 'Space Grotesk', weight: 700, style: 'normal', file: 'SpaceGrotesk-700.woff2' },
   { family: 'Fraunces', weight: 600, style: 'normal', file: 'Fraunces-600.woff2' },
+  { family: 'Fraunces', weight: 900, style: 'normal', file: 'Fraunces-900.woff2' },
+  { family: 'Fraunces', weight: 600, style: 'italic', file: 'Fraunces-Italic-600.woff2' },
   { family: 'Space Mono', weight: 400, style: 'normal', file: 'SpaceMono-400.woff2' },
   { family: 'Space Mono', weight: 700, style: 'normal', file: 'SpaceMono-700.woff2' },
+  { family: 'Anton', weight: 400, style: 'normal', file: 'Anton-400.woff2' },
+  { family: 'Archivo Black', weight: 400, style: 'normal', file: 'ArchivoBlack-400.woff2' },
 ];
 
 let cachedCss: string | null = null;
@@ -70,6 +76,8 @@ export function fontFaceCss(): string {
     `--font-display:'Space Grotesk','Inter',-apple-system,'Segoe UI',sans-serif;` +
     `--font-serif:'Fraunces',Georgia,'Times New Roman',serif;` +
     `--font-mono:'Space Mono','SFMono-Regular',Menlo,Consolas,monospace;` +
+    `--font-condensed:'Anton','Arial Narrow',sans-serif;` +
+    `--font-black:'Archivo Black','Arial Black',sans-serif;` +
     `}`;
   cachedCss = blocks.join('\n') + '\n' + vars;
   return cachedCss;

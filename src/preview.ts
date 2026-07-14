@@ -1,4 +1,3 @@
-import sanitizeHtml from 'sanitize-html';
 import { Post } from '../schemas/post.js';
 import { MediaDescriptor } from './media.js';
 
@@ -7,8 +6,20 @@ import { MediaDescriptor } from './media.js';
  * internal debug data. In TEST mode this preview IS the system draft.
  */
 
+/**
+ * True HTML escaping (not tag-stripping): the preview is the reviewable draft,
+ * so authored text like "wrap it in <thinking> tags" must display verbatim —
+ * a stripper would silently delete it and the operator would approve a caption
+ * that differs from what actually publishes. Quotes are escaped because esc()
+ * is also used inside attribute values.
+ */
 function esc(text: string): string {
-  return sanitizeHtml(text, { allowedTags: [], allowedAttributes: {} });
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export interface PreviewInput {

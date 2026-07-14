@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { R2, getPrivateJson, putPrivateJson } from './r2.js';
-import { IgClient, getMedia, listRecentMedia } from './instagram.js';
+import { IgClient, getMedia, getContainerStatus, listRecentMedia } from './instagram.js';
 import { Post } from '../schemas/post.js';
 import { log } from './logger.js';
 
@@ -60,6 +60,12 @@ export async function saveAttemptRecord(r2: R2, record: AttemptRecord): Promise<
 
 export interface VerificationOutcome {
   published: boolean;
+  /**
+   * True when verification could not run to completion (API failure, unknown
+   * container status). An inconclusive outcome must keep the row
+   * VERIFY_REQUIRED — treating it as "not published" invites a double publish.
+   */
+  inconclusive: boolean;
   mediaId: string | null;
   permalink: string | null;
   reason: string;
@@ -67,8 +73,11 @@ export interface VerificationOutcome {
 
 /**
  * Determine whether an ambiguous publish actually succeeded. Checks, in order:
- * 1) an existing idempotency record, 2) the saved parent container's published
- * media, 3) recent account media matching the caption fingerprint.
+ * 1) an existing idempotency record, 2) the saved parent container's status
+ * (PUBLISHED is definitive proof), 3) recent account media matching the
+ * caption fingerprint — bounded in time so an older post with a reused first
+ * line can never masquerade as this publication. Any check that cannot run
+ * makes the outcome inconclusive rather than "not published".
  */
 export async function verifyPublication(
   r2: R2,
@@ -81,34 +90,84 @@ export async function verifyPublication(
   if (existing) {
     return {
       published: true,
+      inconclusive: false,
       mediaId: existing.mediaId,
       permalink: existing.permalink,
       reason: 'idempotency record present',
     };
   }
 
-  // 2. If the parent container was published, media metadata will resolve and
-  //    the caption fingerprint should match the account's recent media.
+  // 2. The saved parent container is the strongest evidence we hold: a
+  //    PUBLISHED status means the post IS live even when we don't yet know the
+  //    media id; the caption scan below then tries to resolve it.
+  let containerPublished = false;
+  let containerUnknown = false;
+  if (attempt?.parentContainerId) {
+    const status = await getContainerStatus(ig, attempt.parentContainerId);
+    if (status === 'PUBLISHED') containerPublished = true;
+    else if (status === 'UNKNOWN') containerUnknown = true;
+  }
+
+  // 3. Caption-fingerprint scan of recent media, accepting only media created
+  //    around/after the publish attempt (6h clock-skew allowance) so a
+  //    months-old post with the same first line is never matched.
   const captionFingerprint = captionKey(post.caption);
+  const attemptTime = attempt?.updatedAt ?? Date.parse(post.generated_at) ?? null;
+  const earliest =
+    attemptTime && Number.isFinite(attemptTime) ? attemptTime - 6 * 60 * 60 * 1000 : null;
   const recent = await listRecentMedia(ig, 15);
+  if (recent === null) {
+    return {
+      published: containerPublished,
+      inconclusive: true,
+      mediaId: null,
+      permalink: null,
+      reason: containerPublished
+        ? 'parent container PUBLISHED but recent-media lookup failed; media id unresolved'
+        : 'recent-media lookup failed; cannot verify — keeping VERIFY_REQUIRED',
+    };
+  }
   for (const m of recent) {
-    if (m.caption && captionKey(m.caption) === captionFingerprint) {
-      // Confirm ownership by fetching the media directly.
-      const media = await getMedia(ig, m.id);
-      if (media.ownerId === null || media.ownerId === ig.userId) {
-        return {
-          published: true,
-          mediaId: m.id,
-          permalink: m.permalink ?? media.permalink,
-          reason: 'matched recent account media by caption',
-        };
-      }
+    if (!m.caption || captionKey(m.caption) !== captionFingerprint) continue;
+    if (earliest !== null && m.timestamp) {
+      const ts = Date.parse(m.timestamp);
+      if (Number.isFinite(ts) && ts < earliest) continue; // predates the attempt
+    }
+    // Confirm ownership by fetching the media directly.
+    const media = await getMedia(ig, m.id);
+    if (media.ownerId === null || media.ownerId === ig.userId) {
+      return {
+        published: true,
+        inconclusive: false,
+        mediaId: m.id,
+        permalink: m.permalink ?? media.permalink,
+        reason: 'matched recent account media by caption',
+      };
     }
   }
 
-  void attempt;
+  if (containerPublished) {
+    // Definitively live, but the media id could not be resolved this run.
+    return {
+      published: true,
+      inconclusive: true,
+      mediaId: null,
+      permalink: null,
+      reason: 'parent container PUBLISHED; media id not yet resolved',
+    };
+  }
+  if (containerUnknown) {
+    return {
+      published: false,
+      inconclusive: true,
+      mediaId: null,
+      permalink: null,
+      reason: 'parent container status unavailable; cannot verify — keeping VERIFY_REQUIRED',
+    };
+  }
   return {
     published: false,
+    inconclusive: false,
     mediaId: null,
     permalink: null,
     reason: 'no matching published media found',

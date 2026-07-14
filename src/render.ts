@@ -217,6 +217,16 @@ function esc(text: string | undefined): string {
 }
 
 /**
+ * Headline formatter: escape first, then convert `*word*` accent markers into
+ * `<em class="hl">` spans each art direction styles as its own graphic move
+ * (italic serif, accent slab, ruler underline…). One marked word per headline
+ * is the authoring guidance; unmatched asterisks pass through untouched.
+ */
+function fmtHeadline(text: string | undefined): string {
+  return esc(text).replace(/\*([^*\n]+)\*/g, '<em class="hl">$1</em>');
+}
+
+/**
  * Topic theming. Each carousel is visually branded to its subject: posts about
  * Claude/Anthropic get a warm cream+clay world, posts about OpenAI/ChatGPT get
  * a near-black+teal world, everything else keeps the premium brand default.
@@ -465,18 +475,32 @@ const BASE_CSS = `
     pointer-events: none; z-index: 0; }
   .decor { position: absolute; }
   .content, .footer { position: relative; z-index: 1; }
+  /* Chip-styled kickers must hug their content, never stretch as flex items. */
   .kicker { font-size: 30px; font-weight: 700; letter-spacing: 3px;
-    text-transform: uppercase; color: var(--c-ink-accent); margin-bottom: 28px; }
+    text-transform: uppercase; color: var(--c-ink-accent); margin-bottom: 28px;
+    align-self: flex-start; }
+  /* Cover masthead: brandmark + kicker share one row instead of stacking. */
+  .masthead { display: flex; align-items: center; gap: 28px; }
+  .masthead .kicker { margin-bottom: 0; }
+  /* Cover deck: body + swipe travel together as the bottom group. */
+  .deck { display: flex; flex-direction: column; gap: 26px; }
   .headline { font-size: 82px; font-weight: 800; line-height: 1.05;
     letter-spacing: -1.5px; color: var(--c-text); }
   .headline.small { font-size: 64px; }
+  /* Accent-word markup: *word* in a headline renders as an <em class="hl">. */
+  .headline .hl { font-style: normal; color: var(--c-ink-accent); }
+  /* Ghost slide numeral (numbered/step): lives in the clipped decor layer. */
+  .decor-num::after { content: attr(data-num); }
+  .decor-num { font-weight: 800; font-size: 520px; line-height: 1;
+    right: -30px; top: -70px;
+    color: color-mix(in srgb, var(--c-text) 7%, transparent); }
   .body { font-size: 38px; line-height: 1.4; color: var(--c-text);
     font-weight: 450; }
   .muted { color: var(--c-muted); }
   .content { flex: 1; display: flex; flex-direction: column;
     justify-content: center; gap: 32px; }
   .footer { display: flex; align-items: center; justify-content: space-between;
-    font-size: 30px; font-weight: 600; color: var(--c-muted); }
+    font-size: 30px; font-weight: 600; color: var(--c-muted); flex-shrink: 0; }
   .handle { color: var(--c-ink-accent); }
   .footer-logo { width: 42px; height: 42px; display: block; opacity: 0.9; }
   .brandmark { display: flex; align-items: center; gap: 18px; }
@@ -506,49 +530,59 @@ function brandVars(brand: Brand): string {
 
 /** Render the inner HTML of a single slide by type. */
 function slideBody(slide: Slide, index: number, brand: Brand, theme?: ResolvedTheme): string {
-  const kicker = slide.kicker ? `<div class="kicker">${esc(slide.kicker)}</div>` : '';
   const brandmark =
     theme?.logo && theme.label
       ? `<div class="brandmark"><img src="${theme.logo}" alt=""><span>${esc(theme.label)}</span></div>`
       : '';
   switch (slide.type) {
-    case 'cover':
+    case 'cover': {
+      // Masthead: brandmark + kicker share one row; a kicker that merely
+      // repeats the theme label ("AI News" twice) is dropped.
+      const kickerText = (slide.kicker ?? '').trim();
+      const dupLabel =
+        !!theme?.label && kickerText.toLowerCase() === theme.label.trim().toLowerCase();
+      const kickerChip =
+        kickerText && !dupLabel ? `<div class="kicker">${esc(kickerText)}</div>` : '';
+      const masthead =
+        brandmark || kickerChip ? `<div class="masthead">${brandmark}${kickerChip}</div>` : '';
       return `
         <div class="content cover">
-          ${brandmark}
-          ${kicker || '<div class="kicker">Carousel</div>'}
-          <h1 class="headline">${esc(slide.headline)}</h1>
-          ${slide.body ? `<p class="body muted">${esc(slide.body)}</p>` : ''}
-          <div class="swipe">Swipe →</div>
+          ${masthead}
+          <h1 class="headline">${fmtHeadline(slide.headline)}</h1>
+          <div class="deck">
+            ${slide.body ? `<p class="body muted">${esc(slide.body)}</p>` : ''}
+            <div class="swipe">Swipe →</div>
+          </div>
         </div>`;
+    }
     case 'numbered-point':
     case 'step':
       return `
         <div class="content numbered">
           <div class="row">
             <span class="badge">${slide.index ?? index}</span>
-            <h2 class="headline small">${esc(slide.headline)}</h2>
+            <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           </div>
           ${slide.body ? `<p class="body">${esc(slide.body)}</p>` : ''}
         </div>`;
     case 'myth-reality':
       return `
         <div class="content myth">
-          <h2 class="headline small">${esc(slide.headline)}</h2>
+          <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           <div class="pair myth-box"><span class="tag">Myth</span><p class="body">${esc(slide.myth)}</p></div>
           <div class="pair reality-box"><span class="tag">Reality</span><p class="body">${esc(slide.reality)}</p></div>
         </div>`;
     case 'mistake-solution':
       return `
         <div class="content mistake">
-          <h2 class="headline small">${esc(slide.headline)}</h2>
+          <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           <div class="pair mistake-box"><span class="tag">Mistake</span><p class="body">${esc(slide.mistake)}</p></div>
           <div class="pair solution-box"><span class="tag">Do this</span><p class="body">${esc(slide.solution)}</p></div>
         </div>`;
     case 'comparison':
       return `
         <div class="content comparison">
-          <h2 class="headline small">${esc(slide.headline)}</h2>
+          <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           <div class="cols">
             <div class="col"><div class="col-title">${esc(slide.optionA)}</div><ul>${(slide.pointsA ?? []).map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
             <div class="col alt"><div class="col-title">${esc(slide.optionB)}</div><ul>${(slide.pointsB ?? []).map((p) => `<li>${esc(p)}</li>`).join('')}</ul></div>
@@ -557,14 +591,14 @@ function slideBody(slide: Slide, index: number, brand: Brand, theme?: ResolvedTh
     case 'checklist':
       return `
         <div class="content checklist">
-          <h2 class="headline small">${esc(slide.headline)}</h2>
+          <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           <ul class="checks">${(slide.items ?? []).map((p) => `<li><span class="check">✓</span>${esc(p)}</li>`).join('')}</ul>
         </div>`;
     case 'summary':
       return `
         <div class="content summary">
           <div class="kicker">In summary</div>
-          <h2 class="headline small">${esc(slide.headline)}</h2>
+          <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           ${slide.body ? `<p class="body">${esc(slide.body)}</p>` : ''}
           ${(slide.items ?? []).length ? `<ul class="checks">${(slide.items ?? []).map((p) => `<li><span class="check">✓</span>${esc(p)}</li>`).join('')}</ul>` : ''}
         </div>`;
@@ -576,7 +610,7 @@ function slideBody(slide: Slide, index: number, brand: Brand, theme?: ResolvedTh
       const ctaPill = slide.kicker || `Follow ${brand.instagramHandle}`;
       return `
         <div class="content cta">
-          <h2 class="headline">${esc(slide.headline)}</h2>
+          <h2 class="headline">${fmtHeadline(slide.headline)}</h2>
           ${ctaBody ? `<p class="body">${esc(ctaBody)}</p>` : ''}
           <div class="cta-pill">${esc(ctaPill)}</div>
         </div>`;
@@ -585,7 +619,7 @@ function slideBody(slide: Slide, index: number, brand: Brand, theme?: ResolvedTh
     default:
       return `
         <div class="content standard">
-          <h2 class="headline small">${esc(slide.headline)}</h2>
+          <h2 class="headline small">${fmtHeadline(slide.headline)}</h2>
           ${slide.body ? `<p class="body">${esc(slide.body)}</p>` : ''}
         </div>`;
   }
@@ -608,11 +642,18 @@ export function buildSlideHtml(
       ${theme?.logo ? `<img class="footer-logo" src="${theme.logo}" alt="">` : ''}
       <span class="pagenum">${index} / ${total}</span>
     </div>`;
+  // Ghost sequence numeral for sparse interior slides; rendered inside the
+  // clipped decor layer so it can bleed without tripping overflow measurement.
+  const ghostNum =
+    slide.type === 'numbered-point' || slide.type === 'step'
+      ? `<div class="decor decor-num" data-num="${String(slide.index ?? index).padStart(2, '0')}"></div>`
+      : '';
   const decor = `
     <div class="decor-layer" aria-hidden="true">
       <div class="decor decor-1"></div>
       <div class="decor decor-2"></div>
       <div class="decor decor-3"></div>
+      ${ghostNum}
     </div>`;
   // Cascade: fonts → base → brand palette → theme palette → template layout →
   // art-direction style → motion (art-direction owns background + decor + type).
@@ -665,10 +706,18 @@ const AUTOFIT_FN = `(async () => {
   try { await document.fonts.ready; } catch (e) {}
   const el = document.querySelector('.slide-cover .headline');
   if (!el) return { fitted: false };
+  // A giant headline can also squeeze or push the rest of the column (deck,
+  // footer) out of frame, so fitting means EVERY content element stays inside
+  // the canvas — not just the headline box.
   const fits = () => {
-    const r = el.getBoundingClientRect();
-    return r.right <= W + 1.5 && r.bottom <= H + 1.5 && r.left >= -1.5 && r.top >= -1.5
-      && document.body.scrollWidth <= W + 1 && document.body.scrollHeight <= H + 1;
+    const all = [el, ...document.querySelectorAll('.content *, .footer, .footer *')];
+    for (const n of all) {
+      const r = n.getBoundingClientRect();
+      if (r.width > 0 && (r.right > W + 1.5 || r.bottom > H + 1.5 || r.left < -1.5 || r.top < -1.5)) {
+        return false;
+      }
+    }
+    return document.body.scrollWidth <= W + 1 && document.body.scrollHeight <= H + 1;
   };
   if (fits()) return { fitted: false };
   const start = parseFloat(getComputedStyle(el).fontSize) || 96;

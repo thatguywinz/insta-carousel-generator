@@ -63,6 +63,15 @@ function normalizeQuotes(text: string): string {
   return text.replace(/[‘’]/g, "'").replace(/[“”]/g, '"');
 }
 
+/**
+ * Strip `*word*` accent markers (rendered as styled spans) so phrase matching
+ * and word counts operate on the copy a reader actually sees — `*game-changer*`
+ * must not slip past the slop checks on a technicality.
+ */
+function stripAccentMarkers(text: string): string {
+  return text.replace(/\*/g, '');
+}
+
 /** Signals that a cover headline has a real hook: a number, a named subject, or tension. */
 const HOOK_NUMBER = /\d/;
 const HOOK_SUBJECT =
@@ -131,7 +140,7 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
   const seen = new Map<string, number>();
   post.slides.forEach((slide, i) => {
     const n = i + 1;
-    const headlineWords = countWords(slide.headline);
+    const headlineWords = countWords(stripAccentMarkers(slide.headline));
     if (headlineWords > 12) {
       issues.push({
         slide: n,
@@ -187,10 +196,12 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
   // or lose the scroll — slop is a hard error; elsewhere (and in the caption)
   // it warns so the operator applies judgment.
   post.slides.forEach((slide, i) => {
-    const copy = normalizeQuotes(
-      [slide.headline, slide.body, slide.kicker, slide.myth, slide.reality, slide.mistake]
-        .filter(Boolean)
-        .join(' '),
+    const copy = stripAccentMarkers(
+      normalizeQuotes(
+        [slide.headline, slide.body, slide.kicker, slide.myth, slide.reality, slide.mistake]
+          .filter(Boolean)
+          .join(' '),
+      ),
     ).toLowerCase();
     const critical = i === 0 || i === post.slides.length - 1;
     for (const phrase of GENERIC_AI_PHRASES) {
@@ -218,7 +229,7 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
 
   // Hook lint: a cover headline with no number, no named tool/model and no
   // tension word rarely stops a scroll. Warning only — judgment stays human.
-  const coverHeadline = post.slides[0]?.headline ?? '';
+  const coverHeadline = stripAccentMarkers(post.slides[0]?.headline ?? '');
   if (
     post.slides[0]?.type === 'cover' &&
     !HOOK_NUMBER.test(coverHeadline) &&
@@ -230,6 +241,19 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
       code: 'HOOK_WEAK',
       message:
         'cover headline has no number, named tool, or tension word — consider a stronger hook',
+      severity: 'warning',
+    });
+  }
+
+  // Accent-word lint: every art direction styles a `*marked*` word as its
+  // signature graphic move; a cover hook without one renders flat. Warning
+  // only — some hooks genuinely don't have a single payoff word.
+  if (post.slides[0]?.type === 'cover' && !/\*[^*\n]+\*/.test(post.slides[0]?.headline ?? '')) {
+    issues.push({
+      slide: 1,
+      code: 'HOOK_NO_ACCENT',
+      message:
+        'cover headline has no *accent-marked* word — mark the payoff word (e.g. "Claude Code just got *parallel subagents*") so the art direction can spotlight it',
       severity: 'warning',
     });
   }
@@ -265,12 +289,27 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
  * the operator adds a primary source or rewrites — never invents a number.
  */
 export function validateResearch(post: Post): ValidationReport {
+  // Every rendered text field participates — prices/stats placed in comparison
+  // columns or kickers must not bypass the unsourced-claim gate.
   const combined = (
     post.caption +
     ' ' +
     post.slides
       .map((s) =>
-        [s.headline, s.body, s.myth, s.reality, s.mistake, s.solution, ...(s.items ?? [])]
+        [
+          s.headline,
+          s.body,
+          s.kicker,
+          s.myth,
+          s.reality,
+          s.mistake,
+          s.solution,
+          s.optionA,
+          s.optionB,
+          ...(s.pointsA ?? []),
+          ...(s.pointsB ?? []),
+          ...(s.items ?? []),
+        ]
           .filter(Boolean)
           .join(' '),
       )

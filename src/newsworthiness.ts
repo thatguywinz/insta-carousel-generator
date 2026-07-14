@@ -72,16 +72,35 @@ export function parseSourceDate(raw: string | undefined, zone = 'utc'): DateTime
   return fmt.isValid ? fmt : null;
 }
 
-/** Age in days of the freshest dated source, or null when none is dated. */
+/** Clock-skew allowance before a source date counts as "in the future". */
+const FUTURE_SKEW_DAYS = 1;
+
+/**
+ * Age in days of the freshest dated source, or null when none is dated.
+ * Future-dated sources (beyond skew) are EXCLUDED — a typo'd year would
+ * otherwise register as negative age, masking genuinely stale sources and
+ * sailing through the freshness gate as "breaking".
+ */
 export function freshestSourceAgeDays(post: Post, now: DateTime): number | null {
   let best: number | null = null;
   for (const src of post.sources) {
     const dt = parseSourceDate(src.published_at, now.zoneName ?? 'utc');
     if (!dt) continue;
     const age = now.diff(dt, 'days').days;
+    if (age < -FUTURE_SKEW_DAYS) continue;
     if (best === null || age < best) best = age;
   }
   return best;
+}
+
+/** Source dates in the future (beyond skew) — always an authoring error. */
+export function futureSourceDates(post: Post, now: DateTime): string[] {
+  const out: string[] = [];
+  for (const src of post.sources) {
+    const dt = parseSourceDate(src.published_at, now.zoneName ?? 'utc');
+    if (dt && now.diff(dt, 'days').days < -FUTURE_SKEW_DAYS) out.push(src.published_at ?? '');
+  }
+  return out;
 }
 
 /** True when a story broke inside the first-mover window (worth racing on). */
@@ -95,13 +114,17 @@ export function isBreaking(
 }
 
 /**
- * Infer the lane when the author did not declare one: a post carrying sources or
- * a why_now anchor is clearly attempting news; anything else is a value post.
+ * Infer the lane when the author did not declare one. A why_now anchor is the
+ * clearest news signal; value_promise / no_news_reason are the clearest value
+ * signals. Sources alone do NOT force the news lane — the UNSOURCED_CLAIM rule
+ * requires value posts citing hard numbers to carry sources, and those must
+ * not be misrouted into news and rejected for missing why_now.
  */
 export function resolveContentType(post: Post): ContentType {
   if (post.content_type) return post.content_type;
-  if (post.sources.length > 0 || (post.why_now ?? '').trim()) return 'news';
-  return 'value';
+  if ((post.why_now ?? '').trim()) return 'news';
+  if ((post.value_promise ?? '').trim() || (post.no_news_reason ?? '').trim()) return 'value';
+  return post.sources.length > 0 ? 'news' : 'value';
 }
 
 /** NEWS lane: real, sourced, fresh. */
@@ -130,6 +153,15 @@ function checkNewsLane(
       severity,
     });
     return issues;
+  }
+
+  const future = futureSourceDates(post, now);
+  if (future.length > 0) {
+    issues.push({
+      code: 'FUTURE_SOURCE_DATE',
+      message: `source published_at is in the future (${future.join(', ')}) — fix the date; never invent release dates`,
+      severity,
+    });
   }
 
   const age = freshestSourceAgeDays(post, now);

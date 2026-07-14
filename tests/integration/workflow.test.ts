@@ -108,6 +108,7 @@ vi.mock('../../src/google-sheets.js', () => {
     listTabs: async () => H.grid.tabs,
     readRange: async (_c: unknown, range: string) => {
       if (range === 'Settings!A:B') return H.grid.settings;
+      if (range === 'Content!1:1') return [H.grid.header];
       if (range.startsWith('Content!A1:') && range.endsWith('1')) return [H.grid.header];
       if (range.startsWith('Content!A2:')) return H.grid.data;
       return [];

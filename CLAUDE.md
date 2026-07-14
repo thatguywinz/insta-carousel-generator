@@ -146,7 +146,8 @@ excellent; "5 AI tips" is filler. The number is fine; vagueness is not.
 ### Authoring rules (must follow)
 
 - **Enforced by validation** — errors here mean the run ships nothing, on purpose:
-  - news lane: `NO_WHY_NOW`, `NO_SOURCE`, `NO_SOURCE_DATE`, `STALE_STORY`
+  - news lane: `NO_WHY_NOW`, `NO_SOURCE`, `NO_SOURCE_DATE`, `STALE_STORY`,
+    `FUTURE_SOURCE_DATE` (a published_at after today is always an authoring error)
   - value lane: `NO_VALUE_PROMISE`, `NO_FALLBACK_REASON`, `NOT_ACTIONABLE`
   - either lane: `HYPE_SLOP`
   - `CONTENT_MODE=news-only` additionally rejects the value lane (`VALUE_NOT_ALLOWED`).
@@ -189,6 +190,13 @@ the number/claim (source volatile facts in `post.sources`). Auto-fit shrinks a b
 cover headline to fit (floor ~56px); if it still overflows, **shorten the copy** —
 don't accept a tiny hook. Avoid the phrases blocklisted in `src/visual-validation.ts`.
 
+**Mark the payoff word.** Wrap the ONE payoff word/phrase of every cover headline
+(and optionally an interior headline) in asterisks — `"Claude Code just got
+*parallel subagents*"`. The renderer turns `*…*` into the art direction's signature
+accent move (italic clay serif on editorial, red display lines on kinetic, accent
+knockout on poster…). A cover without a marker renders flat and warns
+(`HOOK_NO_ACCENT`). Never mark more than one span per headline.
+
 ### CTA playbook (the last slide earns the follow)
 
 The final `cta` slide is where a scroller becomes a follower — only if you give them
@@ -226,20 +234,28 @@ someone who just got value thinks "yes, I want the next one".
   Pick the one that fits the content shape.
 - **`art_direction`** = the _style_ (typography + background treatment + decor +
   motion personality), owned by `src/art-direction.ts`. Six distinct, deliberately
-  artistic, non-rainbow systems:
-  - `editorial` — high-contrast serif magazine, whitespace, hairline accent, grain.
-  - `brutalist` — mono type, hard grid, square blocks, bracket labels (how-tos).
-  - `spotlight` — dark cinematic stage, one accent glow, centered oversized type.
-  - `kinetic` — huge grotesk filling the frame (best for _short_ punchy hooks).
-  - `blueprint` — technical graph grid, corner ticks, mono annotations.
-  - `poster` — bold Swiss color blocks + oversized type.
+  artistic, non-rainbow systems — each also styles the `*accent*` word, a ghost
+  sequence numeral on sparse interiors, and a designed CTA end-card:
+  - `editorial` — Fraunces-900 magazine front page: masthead row, hairlines,
+    italic accent word, vertical spine label, grain; CTA inverts to an ink card.
+  - `brutalist` — mono type, hard grid, square blocks, `/// LIVE FEED` strip,
+    bracket labels (how-tos); CTA is a primary-filled slab card.
+  - `spotlight` — dark cinematic stage: twin conic beams + breathing glow,
+    centered oversized type; CTA is a glowing finale card.
+  - `kinetic` — Anton condensed uppercase filling the whole frame (the type IS
+    the art); CTA is a primary-filled Anton card.
+  - `blueprint` — technical graph grid, corner ticks, `FIG.` annotations, ruler
+    underline on the accent word; CTA is a dashed-frame spec card.
+  - `poster` — full-bleed primary color field + Archivo Black knockout type +
+    solid accent geometry (maximum ink in the feed); CTA bookends the same field.
     Leave it unset to let the `ART_DIRECTION` Setting rotate it (default `auto`,
     seeded per idea). **Set it deliberately and vary it from recent posts** so every
     post looks like a different designed piece. Match the style to the content
-    (kinetic → one-line hooks; brutalist/blueprint → technical how-tos; editorial →
-    explainers; spotlight/poster → launches). `kinetic` **and** `brutalist` use
-    wide/mono display type — keep their cover hooks short (≤ ~6 words) or auto-fit
-    will shrink them to the 56px floor.
+    (kinetic → punchy hooks; brutalist/blueprint → technical how-tos; editorial →
+    explainers; spotlight/poster → launches). `brutalist` (mono) and `poster`
+    (ultra-wide Archivo Black) need short hooks (≤ ~6 words); `kinetic` (condensed
+    Anton) stacks up to ~8 words. Auto-fit protects the whole layout (headline,
+    deck AND footer) down to the 56px floor — if it floors, shorten the copy.
 - Visual inspection must **reject bland output**: every slide must show the art
   direction's background treatment + a graphic accent, real display typography (not
   a plain system sans), and the cover must carry the theme's logo mark and a
@@ -255,8 +271,11 @@ someone who just got value thinks "yes, I want the next one".
   screenshots → H.264 MP4 via `src/motion.ts`) and every motion slide still emits
   a poster PNG (its settled t=0 frame) for inspection and the grid thumbnail.
 - **Authoring for motion:** all animation is "settled at t=0" (light sweeps,
-  parallax/drift, breathing glows, slow-rotating accent marks on already-visible
+  parallax/drift, breathing glows, swaying stage beams on already-visible
   elements) so the first frame is a strong still and the overflow check passes.
+  Motion-only elements (the light-sweep bars) rest OFF-canvas, so static slides
+  never show a frozen mid-animation beam — if a static render shows a stray
+  glare band or a half-drawn underline, that is a defect, not a style.
   Each `art_direction` has its own motion personality (`motionCss` +
   `MOTION_KEYFRAMES` in `src/art-direction.ts`); you don't hand-write animations —
   you only choose which slides move via `MOTION_SLIDES` / per-slide `animate: true`

@@ -25,6 +25,7 @@ import { validateAll } from './visual-validation.js';
 import { PostSchema, Post } from '../schemas/post.js';
 import { GeneratedIdeaInput } from './idea-selection.js';
 import { createR2, putPublic, headPublic, verifyPublicUrl } from './r2.js';
+import { acquireLock, releaseLock } from './locks.js';
 import { loadActiveToken, refreshTokenIfNeeded } from './token-manager.js';
 import {
   createIgClient,
@@ -165,36 +166,50 @@ async function cmdSelectIdea(): Promise<number> {
   await verifyContentHeaders(ctx);
   const settings = await readSettings(ctx);
   const brand = await loadBrand(settings);
-  const rows = await readContentRows(ctx);
 
-  const resumable = selectResumable(rows);
-  const row = resumable ?? selectUnusedIdea(rows, unusedSelectOptions(settings, cfg.timezone));
-  if (!row) {
-    console.log(
-      'No UNUSED or in-progress idea available. Author runtime/idea-plan.json and run workflow.',
-    );
+  // markSelected mutates the Sheet and (for manual rows without an idea_id)
+  // addresses cells by row position — safe only under the workflow lock, so a
+  // concurrent scheduled run can't interleave and corrupt the selection.
+  const r2 = createR2(cfg);
+  const lock = await acquireLock(r2, { stage: 'select-idea' });
+  if (!lock) {
+    console.error('Another workflow run holds the lock; try again shortly.');
+    return 1;
+  }
+  try {
+    const rows = await readContentRows(ctx);
+
+    const resumable = selectResumable(rows);
+    const row = resumable ?? selectUnusedIdea(rows, unusedSelectOptions(settings, cfg.timezone));
+    if (!row) {
+      console.log(
+        'No UNUSED or in-progress idea available. Author runtime/idea-plan.json and run workflow.',
+      );
+      await mkdir(RUNTIME, { recursive: true });
+      await writeFile(
+        path.join(RUNTIME, 'idea-context.json'),
+        JSON.stringify({ settings }, null, 2),
+        'utf8',
+      );
+      return 0;
+    }
+    const ideaId = row.idea_id.trim() || (await markSelected(ctx, row));
+    const context: SelectionContext = { ideaId, idea: row.idea, settings, brand, recentTopics: [] };
     await mkdir(RUNTIME, { recursive: true });
     await writeFile(
-      path.join(RUNTIME, 'idea-context.json'),
-      JSON.stringify({ settings }, null, 2),
+      path.join(RUNTIME, 'selection-context.json'),
+      JSON.stringify(context, null, 2),
       'utf8',
     );
+    console.log(`Selected idea: ${row.idea}`);
+    console.log(`idea_id: ${ideaId}`);
+    console.log(
+      'Context written to runtime/selection-context.json. Author runtime/post-plan.json next.',
+    );
     return 0;
+  } finally {
+    await releaseLock(r2, lock);
   }
-  const ideaId = row.idea_id.trim() || (await markSelected(ctx, row));
-  const context: SelectionContext = { ideaId, idea: row.idea, settings, brand, recentTopics: [] };
-  await mkdir(RUNTIME, { recursive: true });
-  await writeFile(
-    path.join(RUNTIME, 'selection-context.json'),
-    JSON.stringify(context, null, 2),
-    'utf8',
-  );
-  console.log(`Selected idea: ${row.idea}`);
-  console.log(`idea_id: ${ideaId}`);
-  console.log(
-    'Context written to runtime/selection-context.json. Author runtime/post-plan.json next.',
-  );
-  return 0;
 }
 
 async function cmdRender(): Promise<number> {

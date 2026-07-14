@@ -71,12 +71,25 @@ export async function putPublic(
   return publicUrl(r2, key);
 }
 
+/**
+ * Conditional-write options for private puts. R2 supports the S3 conditional
+ * headers: `ifNoneMatch: '*'` creates only when the key is absent; `ifMatch`
+ * replaces only when the stored ETag still matches. A failed precondition
+ * rejects with a 412 (see isPreconditionFailed) — the basis for atomic
+ * lock acquisition/heartbeat.
+ */
+export interface PutCondition {
+  ifMatch?: string;
+  ifNoneMatch?: '*';
+}
+
 /** Put an object into the PRIVATE bucket. Never public-cached. */
 export async function putPrivate(
   r2: R2,
   key: string,
   body: Buffer | string,
   contentType = 'application/json',
+  cond?: PutCondition,
 ): Promise<void> {
   await r2.client.send(
     new PutObjectCommand({
@@ -85,6 +98,8 @@ export async function putPrivate(
       Body: body,
       ContentType: contentType,
       CacheControl: 'no-store, private',
+      IfMatch: cond?.ifMatch,
+      IfNoneMatch: cond?.ifNoneMatch,
     }),
   );
 }
@@ -119,9 +134,40 @@ export async function getPrivateJson<T>(r2: R2, key: string): Promise<T | null> 
   }
 }
 
-/** Write a private JSON object. */
-export async function putPrivateJson(r2: R2, key: string, value: unknown): Promise<void> {
-  await putPrivate(r2, key, JSON.stringify(value, null, 2), 'application/json');
+/** Write a private JSON object (optionally conditional — see PutCondition). */
+export async function putPrivateJson(
+  r2: R2,
+  key: string,
+  value: unknown,
+  cond?: PutCondition,
+): Promise<void> {
+  await putPrivate(r2, key, JSON.stringify(value, null, 2), 'application/json', cond);
+}
+
+/** Read a private JSON object together with its ETag (for conditional writes). */
+export async function getPrivateJsonWithEtag<T>(
+  r2: R2,
+  key: string,
+): Promise<{ value: T; etag: string | null } | null> {
+  try {
+    const res = await r2.client.send(new GetObjectCommand({ Bucket: r2.privateBucket, Key: key }));
+    const buf = await streamToBuffer(res.Body);
+    return { value: JSON.parse(buf.toString('utf8')) as T, etag: res.ETag ?? null };
+  } catch (err) {
+    if (isNotFound(err)) return null;
+    throw err;
+  }
+}
+
+/** True when a conditional put was rejected (ETag mismatch / key exists). */
+export function isPreconditionFailed(err: unknown): boolean {
+  const e = err as { name?: string; $metadata?: { httpStatusCode?: number } };
+  return (
+    e?.name === 'PreconditionFailed' ||
+    e?.$metadata?.httpStatusCode === 412 ||
+    // S3 returns 409 ConditionalRequestConflict for concurrent conditional writes.
+    e?.$metadata?.httpStatusCode === 409
+  );
 }
 
 /** Delete a private object (used for lock release). */

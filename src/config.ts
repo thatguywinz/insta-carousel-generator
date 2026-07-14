@@ -80,6 +80,17 @@ export function loadConfig(): AppConfig {
   const graphVersion = (process.env.META_GRAPH_API_VERSION ?? '').trim() || 'v21.0';
   const timezone = (process.env.TIMEZONE ?? '').trim() || 'America/Toronto';
 
+  // The public and private buckets MUST be distinct: a shared bucket would
+  // serve locks, idempotency records, manifests and the encrypted token at
+  // public URLs — silently violating the private-state invariant on every run.
+  const pubBucket = (process.env.R2_PUBLIC_BUCKET ?? '').trim();
+  const privBucket = (process.env.R2_PRIVATE_BUCKET ?? '').trim();
+  if (pubBucket && privBucket && pubBucket === privBucket) {
+    throw new Error(
+      'R2_PUBLIC_BUCKET and R2_PRIVATE_BUCKET must be different buckets — private state must never be publicly served',
+    );
+  }
+
   // Normalize URLs: some environments provide bare hosts without a scheme.
   const withScheme = (raw: string): string => {
     const v = raw.trim().replace(/\/+$/, '');

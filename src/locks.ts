@@ -1,10 +1,22 @@
 import crypto from 'node:crypto';
-import { R2, getPrivateJson, putPrivateJson, deletePrivate } from './r2.js';
+import {
+  R2,
+  getPrivateJson,
+  getPrivateJsonWithEtag,
+  putPrivateJson,
+  deletePrivate,
+  isPreconditionFailed,
+} from './r2.js';
 import { log } from './logger.js';
 
 /**
  * Distributed workflow lock backed by the private R2 bucket. Ensures only one
  * workflow (manual or scheduled) runs at a time. Supports stale-lock recovery.
+ *
+ * Writes are CONDITIONAL (If-None-Match on create, If-Match on replace and
+ * heartbeat) so two runs racing through the read-check-write sequence cannot
+ * both come away believing they hold the lock; the loser's put is rejected
+ * with a 412 by R2 itself.
  */
 
 export const LOCK_KEY = 'locks/workflow.json';
@@ -42,19 +54,19 @@ export async function acquireLock(
 ): Promise<LockHandle | null> {
   const runId = opts.runId ?? newRunId();
   const ttlMs = opts.ttlMs ?? DEFAULT_TTL_MS;
-  const existing = await getPrivateJson<LockRecord>(r2, LOCK_KEY);
+  const existing = await getPrivateJsonWithEtag<LockRecord>(r2, LOCK_KEY);
 
-  if (existing && existing.expiresAt > now() && existing.runId !== runId) {
+  if (existing && existing.value.expiresAt > now() && existing.value.runId !== runId) {
     log.warn('workflow lock held by another run', {
-      holder: existing.runId,
-      stage: existing.stage,
-      msRemaining: existing.expiresAt - now(),
+      holder: existing.value.runId,
+      stage: existing.value.stage,
+      msRemaining: existing.value.expiresAt - now(),
     });
     return null;
   }
 
-  if (existing && existing.expiresAt <= now()) {
-    log.warn('recovering stale workflow lock', { staleRunId: existing.runId });
+  if (existing && existing.value.expiresAt <= now()) {
+    log.warn('recovering stale workflow lock', { staleRunId: existing.value.runId });
   }
 
   const record: LockRecord = {
@@ -64,9 +76,25 @@ export async function acquireLock(
     ideaId: opts.ideaId ?? null,
     stage: opts.stage ?? 'init',
   };
-  await putPrivateJson(r2, LOCK_KEY, record);
+  // Atomic write: create-if-absent, or replace exactly the record we examined
+  // (stale or our own re-entrant lock). A concurrent writer flips the ETag and
+  // this put is rejected — the loser backs off instead of clobbering.
+  try {
+    await putPrivateJson(
+      r2,
+      LOCK_KEY,
+      record,
+      existing?.etag ? { ifMatch: existing.etag } : { ifNoneMatch: '*' },
+    );
+  } catch (err) {
+    if (isPreconditionFailed(err)) {
+      log.warn('lost lock race to a concurrent run', { runId });
+      return null;
+    }
+    throw err;
+  }
 
-  // Read-back confirm we own it (guards against a race where two runs write).
+  // Belt-and-suspenders read-back (also covers stores without ETag support).
   const confirm = await getPrivateJson<LockRecord>(r2, LOCK_KEY);
   if (!confirm || confirm.runId !== runId) {
     log.warn('lost lock race after write', { runId, owner: confirm?.runId });
@@ -76,26 +104,44 @@ export async function acquireLock(
   return { runId, record };
 }
 
-/** Update the lock's current stage / idea and extend its expiry. */
+/**
+ * Update the lock's current stage / idea and extend its expiry. Returns
+ * whether this run STILL OWNS the lock — `false` means another run took it
+ * (stale recovery) and the caller must abort rather than keep working.
+ */
 export async function heartbeatLock(
   r2: R2,
   handle: LockHandle,
   update: { stage?: string; ideaId?: string | null; ttlMs?: number },
-): Promise<void> {
-  const current = await getPrivateJson<LockRecord>(r2, LOCK_KEY);
-  if (!current || current.runId !== handle.runId) {
+): Promise<boolean> {
+  const current = await getPrivateJsonWithEtag<LockRecord>(r2, LOCK_KEY);
+  if (!current || current.value.runId !== handle.runId) {
     log.warn('cannot heartbeat: lock no longer owned', { runId: handle.runId });
-    return;
+    return false;
   }
   const ttlMs = update.ttlMs ?? DEFAULT_TTL_MS;
   const record: LockRecord = {
-    ...current,
-    stage: update.stage ?? current.stage,
-    ideaId: update.ideaId ?? current.ideaId,
+    ...current.value,
+    stage: update.stage ?? current.value.stage,
+    ideaId: update.ideaId ?? current.value.ideaId,
     expiresAt: now() + ttlMs,
   };
+  try {
+    await putPrivateJson(
+      r2,
+      LOCK_KEY,
+      record,
+      current.etag ? { ifMatch: current.etag } : undefined,
+    );
+  } catch (err) {
+    if (isPreconditionFailed(err)) {
+      log.warn('heartbeat lost race: lock rewritten by another run', { runId: handle.runId });
+      return false;
+    }
+    throw err;
+  }
   handle.record = record;
-  await putPrivateJson(r2, LOCK_KEY, record);
+  return true;
 }
 
 /** Release the lock only if we still own it. Safe to call in finally. */

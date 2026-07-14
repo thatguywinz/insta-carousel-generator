@@ -5,11 +5,22 @@ import { R2 } from '../../src/r2.js';
  * real @aws-sdk command objects work unmodified in unit tests.
  */
 export function createFakeR2(): R2 & {
-  store: Map<string, { body: Buffer; contentType?: string }>;
+  store: Map<string, { body: Buffer; contentType?: string; etag: string }>;
 } {
-  const store = new Map<string, { body: Buffer; contentType?: string }>();
+  const store = new Map<string, { body: Buffer; contentType?: string; etag: string }>();
+  let etagCounter = 0;
 
   const objKey = (bucket: string, key: string): string => `${bucket}//${key}`;
+
+  const preconditionFailed = (): never => {
+    const err = new Error('PreconditionFailed') as Error & {
+      name: string;
+      $metadata: { httpStatusCode: number };
+    };
+    err.name = 'PreconditionFailed';
+    err.$metadata = { httpStatusCode: 412 };
+    throw err;
+  };
 
   const client = {
     async send(command: { constructor: { name: string }; input: Record<string, unknown> }) {
@@ -19,10 +30,17 @@ export function createFakeR2(): R2 & {
       const key = input.Key as string | undefined;
 
       if (name === 'PutObjectCommand') {
+        const existing = store.get(objKey(bucket, key!));
+        // Emulate R2's conditional-write semantics (If-None-Match / If-Match).
+        if (input.IfNoneMatch === '*' && existing) preconditionFailed();
+        if (input.IfMatch !== undefined && (!existing || existing.etag !== input.IfMatch)) {
+          preconditionFailed();
+        }
         const bodyRaw = input.Body as Buffer | string;
         const body = Buffer.isBuffer(bodyRaw) ? bodyRaw : Buffer.from(String(bodyRaw));
-        store.set(objKey(bucket, key!), { body, contentType: input.ContentType as string });
-        return {};
+        const etag = `"fake-etag-${++etagCounter}"`;
+        store.set(objKey(bucket, key!), { body, contentType: input.ContentType as string, etag });
+        return { ETag: etag };
       }
       if (name === 'HeadObjectCommand') {
         const obj = store.get(objKey(bucket, key!));
@@ -35,7 +53,7 @@ export function createFakeR2(): R2 & {
           err.$metadata = { httpStatusCode: 404 };
           throw err;
         }
-        return { ContentType: obj.contentType, ContentLength: obj.body.length };
+        return { ContentType: obj.contentType, ContentLength: obj.body.length, ETag: obj.etag };
       }
       if (name === 'GetObjectCommand') {
         const obj = store.get(objKey(bucket, key!));
@@ -51,7 +69,7 @@ export function createFakeR2(): R2 & {
         async function* gen() {
           yield new Uint8Array(obj!.body);
         }
-        return { Body: gen() };
+        return { Body: gen(), ETag: obj.etag };
       }
       if (name === 'DeleteObjectCommand') {
         store.delete(objKey(bucket, key!));

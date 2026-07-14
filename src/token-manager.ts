@@ -11,6 +11,13 @@ import { log } from './logger.js';
 
 export const TOKEN_KEY = 'token/instagram-token.json';
 const REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000; // refresh when < 7 days to expiry
+/**
+ * Instagram long-lived tokens last ~60 days. When no explicit expiry is known
+ * (the bootstrap env token, or a refresh response without expires_in) we
+ * assume this lifetime so the refresh-near-expiry path is actually reachable —
+ * a `null` expiry previously made refresh dead code and the token hard-expired.
+ */
+const ASSUMED_LIFETIME_MS = 60 * 24 * 60 * 60 * 1000;
 
 export interface TokenRecord {
   blob: EncryptedBlob;
@@ -52,15 +59,26 @@ export async function loadActiveToken(r2: R2, cfg: AppConfig): Promise<ActiveTok
   if (record) {
     try {
       const token = decryptSecret(record.blob, cfg.tokenEncryptionKey);
+      const expired = record.expiresAt !== null && record.expiresAt <= Date.now();
+      // A freshly-provisioned env token supersedes an EXPIRED stored record —
+      // otherwise the dead stored token shadows the replacement forever.
+      if (expired && cfg.instagram.accessToken && cfg.instagram.accessToken !== token) {
+        log.warn('stored token expired; adopting the freshly provisioned env token');
+        const expiresAt = Date.now() + ASSUMED_LIFETIME_MS;
+        await storeToken(r2, cfg, cfg.instagram.accessToken, expiresAt, 'bootstrap-env');
+        return { token: cfg.instagram.accessToken, expiresAt, fromStore: false };
+      }
       return { token, expiresAt: record.expiresAt, fromStore: true };
     } catch {
       log.warn('stored token failed to decrypt; falling back to env token');
     }
   }
   if (cfg.instagram.accessToken) {
-    // Bootstrap: encrypt & persist the env token for future runs.
-    await storeToken(r2, cfg, cfg.instagram.accessToken, null, 'bootstrap-env');
-    return { token: cfg.instagram.accessToken, expiresAt: null, fromStore: false };
+    // Bootstrap: encrypt & persist the env token for future runs, with the
+    // assumed 60-day lifetime so the refresh window can actually trigger.
+    const expiresAt = Date.now() + ASSUMED_LIFETIME_MS;
+    await storeToken(r2, cfg, cfg.instagram.accessToken, expiresAt, 'bootstrap-env');
+    return { token: cfg.instagram.accessToken, expiresAt, fromStore: false };
   }
   return null;
 }
@@ -102,7 +120,7 @@ export async function refreshTokenIfNeeded(
     if (!body.access_token) {
       return { refreshed: false, token: active, error: 'refresh response missing access_token' };
     }
-    const expiresAt = body.expires_in ? Date.now() + body.expires_in * 1000 : null;
+    const expiresAt = Date.now() + (body.expires_in ? body.expires_in * 1000 : ASSUMED_LIFETIME_MS);
     await storeToken(r2, cfg, body.access_token, expiresAt, 'refresh');
     log.info('refreshed Instagram token', { hasExpiry: expiresAt !== null });
     return { refreshed: true, token: { token: body.access_token, expiresAt, fromStore: true } };

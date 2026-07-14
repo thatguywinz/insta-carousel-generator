@@ -132,6 +132,22 @@ interface Manifest {
 
 const manifestKey = (ideaId: string): string => `manifests/${ideaId}.json`;
 
+/**
+ * Heartbeat the lock and ABORT when ownership was lost (a stale-lock takeover
+ * by another run). Continuing without the lock invites two concurrent
+ * workflows — and potentially two publishes — so the loser stops here.
+ */
+async function requireLock(
+  r2: R2,
+  lock: LockHandle,
+  update: { stage?: string; ideaId?: string | null; ttlMs?: number },
+): Promise<void> {
+  const owned = await heartbeatLock(r2, lock, update);
+  if (!owned) {
+    throw new Error('workflow lock lost to another run — aborting before further writes');
+  }
+}
+
 function datePath(timezone: string): string {
   const dt = DateTime.now().setZone(timezone);
   const valid = dt.isValid ? dt : DateTime.now().setZone('America/Toronto');
@@ -194,7 +210,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     if (vr && mode === 'LIVE' && instagramConfigured(cfg)) {
       stage('recover-verify-required');
       activeIdeaId = vr.idea_id;
-      await heartbeatLock(r2, lock, { stage: 'recover', ideaId: vr.idea_id });
+      await requireLock(r2, lock, { stage: 'recover', ideaId: vr.idea_id });
       const recovered = await recoverRow(r2, ctx, cfg, http, vr.idea_id);
       Object.assign(result, recovered);
       return result;
@@ -210,7 +226,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
       if (draft) {
         stage('publish-existing-draft');
         activeIdeaId = draft.idea_id;
-        await heartbeatLock(r2, lock, { stage: 'publish-draft', ideaId: draft.idea_id });
+        await requireLock(r2, lock, { stage: 'publish-draft', ideaId: draft.idea_id });
         const published = await publishExistingDraft(r2, ctx, cfg, http, draft.idea_id, lock);
         Object.assign(result, published);
         return result;
@@ -258,7 +274,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     result.idea = selectedIdeaText;
     result.source = source;
     result.sheetUpdated = true;
-    await heartbeatLock(r2, lock, { stage: 'generate', ideaId: selectedIdeaId });
+    await requireLock(r2, lock, { stage: 'generate', ideaId: selectedIdeaId });
 
     // ---- 4. Author + render + validate the carousel ----
     stage('generate-content');
@@ -285,7 +301,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     });
     // Refresh the lock before rendering: motion capture + encode can take
     // minutes (especially MOTION_SLIDES=all), so start it with a full TTL.
-    await heartbeatLock(r2, lock, { stage: 'render', ideaId: selectedIdeaId });
+    await requireLock(r2, lock, { stage: 'render', ideaId: selectedIdeaId });
     const slides = await renderPost(post, brand, {
       motion: settings.MOTION_SLIDES,
       artDirection: settings.ART_DIRECTION,
@@ -316,7 +332,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
 
     // ---- 5. Upload slides + preview to R2 ----
     stage('upload');
-    await heartbeatLock(r2, lock, { stage: 'upload', ideaId: selectedIdeaId });
+    await requireLock(r2, lock, { stage: 'upload', ideaId: selectedIdeaId });
     const dir = `${datePath(cfg.timezone)}/${selectedIdeaId}`;
     const slideUrls: string[] = [];
     const slideMedia: MediaDescriptor[] = [];
@@ -406,7 +422,7 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
 
     // LIVE publication path.
     stage('publish');
-    await heartbeatLock(r2, lock, { stage: 'publish', ideaId: selectedIdeaId });
+    await requireLock(r2, lock, { stage: 'publish', ideaId: selectedIdeaId });
     const published = await publishExistingDraft(r2, ctx, cfg, http, selectedIdeaId, lock);
     Object.assign(result, published);
     return result;
@@ -417,10 +433,13 @@ export async function runWorkflow(opts: WorkflowOptions): Promise<WorkflowResult
     result.status = 'FAILED';
     if (activeIdeaId) {
       try {
-        // Never downgrade a POSTED row.
+        // Never downgrade a POSTED row, and never destroy a VERIFY_REQUIRED
+        // marker — it is the safety flag that forces verification before any
+        // republish of a possibly-live post.
         const rows = await readContentRows(ctx);
         const row = rows.find((r) => r.idea_id === activeIdeaId);
-        if (row && row.status.trim().toUpperCase() !== 'POSTED') {
+        const rowStatus = row?.status.trim().toUpperCase();
+        if (row && rowStatus !== 'POSTED' && rowStatus !== 'VERIFY_REQUIRED') {
           await updateRowFields(ctx, activeIdeaId, { status: 'FAILED', error: message });
           result.sheetUpdated = true;
         }
@@ -528,12 +547,19 @@ async function publishExistingDraft(
   };
 
   // Heartbeat the lock during (potentially minutes-long) video processing so a
-  // concurrent run can't steal it mid-publish.
+  // concurrent run can't steal it mid-publish. Losing ownership here ABORTS —
+  // we are still before media_publish, so stopping is safe and prevents two
+  // runs from publishing concurrently. Transient heartbeat errors are
+  // tolerated; only a definitive ownership loss stops the run.
   const heartbeatSleep = async (ms: number): Promise<void> => {
     try {
-      await heartbeatLock(r2, lock, { stage: 'publish-poll', ideaId });
-    } catch {
-      /* best-effort; polling continues regardless */
+      const owned = await heartbeatLock(r2, lock, { stage: 'publish-poll', ideaId });
+      if (!owned) {
+        throw new Error('workflow lock lost during publish polling — aborting before publish');
+      }
+    } catch (err) {
+      if (err instanceof Error && err.message.includes('lock lost')) throw err;
+      /* transient heartbeat failure: polling continues */
     }
     await new Promise((r) => setTimeout(r, ms));
   };
@@ -594,21 +620,70 @@ async function publishExistingDraft(
       throw pubErr;
     }
 
-    // Verify ownership + permalink.
-    const published = await getMedia(ig, mediaId);
-    if (published.ownerId && published.ownerId !== ig.userId) {
-      throw new Error('published media owner does not match configured account');
+    // The post is LIVE from here. Persist the durable idempotency record FIRST
+    // (permalink can be enriched afterwards); every later step is bookkeeping
+    // and must never let a transient error mark a live post FAILED — that path
+    // previously left a published post with no record and invited a duplicate.
+    attempt.stage = 'published';
+    try {
+      await saveIdempotencyRecord(r2, {
+        idempotencyKey,
+        ideaId,
+        mediaId,
+        permalink: null,
+        publishedAt: Date.now(),
+      });
+      await saveAttemptRecord(r2, { ...attempt, note: `media ${mediaId}` });
+    } catch (recErr) {
+      await updateRowFields(ctx, ideaId, {
+        status: 'VERIFY_REQUIRED',
+        error: `published (media ${mediaId}) but record save failed: ${sanitizeError(recErr)}`,
+      });
+      return {
+        status: 'VERIFY_REQUIRED',
+        mediaId,
+        sheetUpdated: true,
+        template: post.template,
+        slideCount: media.length,
+        previewUrl: manifest.previewUrl,
+      };
     }
-    const permalink = published.permalink;
 
-    await saveIdempotencyRecord(r2, {
-      idempotencyKey,
-      ideaId,
-      mediaId,
-      permalink,
-      publishedAt: Date.now(),
-    });
-    await saveAttemptRecord(r2, { ...attempt, stage: 'published' });
+    // Verify ownership + fetch the permalink (best-effort: the publish itself
+    // is already recorded, so a transient failure here must not throw).
+    let permalink: string | null = null;
+    try {
+      const published = await getMedia(ig, mediaId);
+      if (published.ownerId && published.ownerId !== ig.userId) {
+        await updateRowFields(ctx, ideaId, {
+          status: 'VERIFY_REQUIRED',
+          error: `published media ${mediaId} owner mismatch — verify manually`,
+        });
+        return {
+          status: 'VERIFY_REQUIRED',
+          mediaId,
+          sheetUpdated: true,
+          template: post.template,
+          slideCount: media.length,
+          previewUrl: manifest.previewUrl,
+        };
+      }
+      permalink = published.permalink;
+    } catch (permErr) {
+      log.warn('permalink fetch failed after publish; continuing with empty permalink', {
+        mediaId,
+        error: sanitizeError(permErr),
+      });
+    }
+    if (permalink) {
+      await saveIdempotencyRecord(r2, {
+        idempotencyKey,
+        ideaId,
+        mediaId,
+        permalink,
+        publishedAt: Date.now(),
+      });
+    }
 
     await markPosted(ctx, cfg, ideaId, mediaId, permalink);
 
@@ -624,7 +699,11 @@ async function publishExistingDraft(
       tokenRefreshed: refresh.refreshed,
     };
   } catch (err) {
-    await saveAttemptRecord(r2, { ...attempt, stage: 'failed', note: sanitizeError(err) });
+    // Never overwrite a 'published' attempt record with 'failed' — the record
+    // is the durable proof that a live post exists.
+    if (attempt.stage !== 'published') {
+      await saveAttemptRecord(r2, { ...attempt, stage: 'failed', note: sanitizeError(err) });
+    }
     throw err;
   }
 }
@@ -682,7 +761,20 @@ async function recoverRow(
     };
   }
 
-  // Not published — safe to hand back to DRAFT_READY for a future publish.
+  // Inconclusive (API failure, unresolved media id, unknown container status):
+  // keep the VERIFY_REQUIRED safety marker so no republish can happen until a
+  // run can actually verify. Demoting on inconclusive evidence is how a live
+  // post gets published twice.
+  if (outcome.inconclusive) {
+    log.warn('recovery inconclusive; keeping VERIFY_REQUIRED', {
+      ideaId,
+      reason: outcome.reason,
+    });
+    await updateRowFields(ctx, ideaId, { error: `recovery inconclusive: ${outcome.reason}` });
+    return { status: 'VERIFY_REQUIRED', sheetUpdated: true };
+  }
+
+  // Definitively not published — safe to hand back to DRAFT_READY.
   log.warn('recovery found no published media', { ideaId, reason: outcome.reason });
   await updateRowFields(ctx, ideaId, {
     status: 'DRAFT_READY',

@@ -36,11 +36,16 @@ export function columnLetter(index1: number): string {
 
 const LAST_COL = columnLetter(CONTENT_HEADERS.length); // 'Q'
 
-/** ISO-ish timestamp in the configured timezone. */
+/**
+ * ISO-ish timestamp in the configured timezone. Uses a NUMERIC UTC offset
+ * ("2026-07-14 11:54:38 -04:00") — offset *names* like "GMT+2" (which Intl
+ * produces for most non-US zones) cannot be round-trip parsed and silently
+ * disabled queue expiry and the dedup window.
+ */
 export function nowTimestamp(timezone: string): string {
   const dt = DateTime.now().setZone(timezone);
   const valid = dt.isValid ? dt : DateTime.now().setZone('America/Toronto');
-  return valid.toFormat("yyyy-MM-dd HH:mm:ss 'ZZZZ'").replace('ZZZZ', valid.offsetNameShort ?? '');
+  return valid.toFormat('yyyy-MM-dd HH:mm:ss ZZ');
 }
 
 /** Verify all required tabs exist. Throws listing the missing ones. */
@@ -69,7 +74,9 @@ export async function readSettings(ctx: SheetContext): Promise<Settings> {
  * Fails safely — we never silently create incompatible columns.
  */
 export async function verifyContentHeaders(ctx: SheetContext): Promise<void> {
-  const rows = await readRange(ctx.client, `Content!A1:${LAST_COL}1`);
+  // Read the ENTIRE first row (not just A1:Q1) so surplus columns beyond the
+  // contract are actually visible to the drift check below.
+  const rows = await readRange(ctx.client, 'Content!1:1');
   const header = rows[0] ?? [];
   const actual = header.map((h) => h.trim());
   const expected = [...CONTENT_HEADERS];

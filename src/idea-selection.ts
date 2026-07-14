@@ -22,13 +22,19 @@ function normalizePriority(raw: string): Priority {
   return 'Medium';
 }
 
-/** Parse a Sheet timestamp ("yyyy-MM-dd HH:mm:ss TZ"). Unparseable → null. */
+/**
+ * Parse a Sheet timestamp. Current format is "yyyy-MM-dd HH:mm:ss ±HH:mm"
+ * (numeric offset, self-contained); legacy rows may carry an alpha zone label
+ * ("EDT", "UTC") or an Intl offset name ("GMT+2", "GMT+5:30") — those are
+ * stripped and interpreted in the configured zone. Unparseable → null.
+ */
 export function parseSheetStamp(raw: string, timezone: string): DateTime | null {
   const s = (raw ?? '').trim();
   if (!s) return null;
-  const dt = DateTime.fromFormat(s.replace(/\s+[A-Z]{2,5}$/, ''), 'yyyy-MM-dd HH:mm:ss', {
-    zone: timezone,
-  });
+  const withOffset = DateTime.fromFormat(s, 'yyyy-MM-dd HH:mm:ss ZZ', { setZone: true });
+  if (withOffset.isValid) return withOffset;
+  const stripped = s.replace(/\s+(?:[A-Za-z]{2,5}|GMT[+-]\d{1,2}(?::\d{2})?)$/, '');
+  const dt = DateTime.fromFormat(stripped, 'yyyy-MM-dd HH:mm:ss', { zone: timezone });
   return dt.isValid ? dt : null;
 }
 
@@ -169,14 +175,12 @@ export function buildRecentCorpus(
   for (const r of rows) {
     const status = r.status.trim().toUpperCase();
     if (status !== 'POSTED' && status !== 'DRAFT_READY' && status !== 'SELECTED') continue;
-    // Prefer selected/added time; if unpariseable, include anyway (conservative).
+    // Prefer selected/added time; if unparseable, include anyway (conservative).
     const stamp = r.published_at || r.selected_at || r.added_at;
     let recent = true;
     if (stamp) {
-      const dt = DateTime.fromFormat(stamp.replace(/\s+[A-Z]{2,5}$/, ''), 'yyyy-MM-dd HH:mm:ss', {
-        zone: timezone,
-      });
-      if (dt.isValid) recent = dt >= cutoff;
+      const dt = parseSheetStamp(stamp, timezone);
+      if (dt) recent = dt >= cutoff;
     }
     if (recent) {
       if (r.idea.trim()) corpus.push(r.idea.trim());
