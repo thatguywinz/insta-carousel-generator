@@ -151,14 +151,14 @@ describe('themed slide html', () => {
 });
 
 describe('cta slide wiring', () => {
-  const ctaBrand: Brand = { ...brand, defaultCta: 'Follow @test — the value line.' };
+  const ctaBrand: Brand = { ...brand, defaultCta: 'Pass this to the one person who needs it.' };
 
-  it('fills body from DEFAULT_CTA and pill from the handle when blank', () => {
+  it('fills body from DEFAULT_CTA and a send pill when blank', () => {
     const cta: Slide = { type: 'cta', headline: 'Want the next one?', body: '', kicker: '' };
     const html = buildSlideHtml(cta, 6, 6, ctaBrand, '');
-    expect(html).toContain('Follow @test — the value line.');
-    expect(html).toContain('Follow @test'); // pill label
-    expect(html).not.toContain('Save &amp; share');
+    expect(html).toContain('Pass this to the one person who needs it.');
+    expect(html).toContain('>Send this<'); // pill label falls back to a send ask, never a follow
+    expect(html).not.toContain('Follow @test');
   });
 
   it('keeps author-written cta body + kicker when provided', () => {

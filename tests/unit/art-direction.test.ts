@@ -24,7 +24,7 @@ const brand: Brand = {
   },
   style: 'bold',
   language: 'en',
-  defaultCta: 'Follow @test — value line.',
+  defaultCta: 'Send this to whoever needs it.',
 };
 
 const cover: Slide = { type: 'cover', headline: 'Hook', body: 'Sub', kicker: 'K' };

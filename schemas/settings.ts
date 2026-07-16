@@ -70,7 +70,7 @@ export function parseSheetBooleanStrict(raw: string | undefined): boolean | null
 /**
  * DEFAULT_CTA is rendered verbatim as the CTA slide's body when the author
  * leaves it empty, so an accidentally pasted paragraph would ship on a real
- * slide. Anything longer than a short follow reason is rejected with a warning.
+ * slide. Anything longer than a short send/save ask is rejected with a warning.
  */
 export const MAX_DEFAULT_CTA_CHARS = 220;
 
@@ -156,7 +156,7 @@ export function parseSettings(
   let defaultCta = raw.DEFAULT_CTA ?? '';
   if (defaultCta.trim().length > MAX_DEFAULT_CTA_CHARS) {
     warn(
-      `DEFAULT_CTA is ${defaultCta.trim().length} chars (> ${MAX_DEFAULT_CTA_CHARS}) — it looks like pasted text, not a follow reason; ignoring it`,
+      `DEFAULT_CTA is ${defaultCta.trim().length} chars (> ${MAX_DEFAULT_CTA_CHARS}) — it looks like pasted text, not a CTA line; ignoring it`,
     );
     defaultCta = '';
   }

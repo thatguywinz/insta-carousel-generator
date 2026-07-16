@@ -70,7 +70,7 @@ export interface Brand {
   };
   style: string;
   language: string;
-  /** Value-driven follow reason from DEFAULT_CTA; used to fill the CTA slide. */
+  /** Send/save ask from DEFAULT_CTA; used to fill the CTA slide body. */
   defaultCta?: string;
 }
 
@@ -603,11 +603,12 @@ function slideBody(slide: Slide, index: number, brand: Brand, theme?: ResolvedTh
           ${(slide.items ?? []).length ? `<ul class="checks">${(slide.items ?? []).map((p) => `<li><span class="check">✓</span>${esc(p)}</li>`).join('')}</ul>` : ''}
         </div>`;
     case 'cta': {
-      // Wire the Sheet's DEFAULT_CTA (a value-driven follow reason) as the body
-      // fallback; the pill is a short action label (the long sentence would
-      // overflow a button), defaulting to "Follow @handle".
+      // Wire the Sheet's DEFAULT_CTA (a send/save ask) as the body fallback;
+      // the pill is a short action label (the long sentence would overflow a
+      // button). The ask is a send or save, never a follow — sends-per-reach
+      // is the ranking signal this account optimizes for.
       const ctaBody = slide.body || brand.defaultCta || '';
-      const ctaPill = slide.kicker || `Follow ${brand.instagramHandle}`;
+      const ctaPill = slide.kicker || 'Send this';
       return `
         <div class="content cta">
           <h2 class="headline">${fmtHeadline(slide.headline)}</h2>

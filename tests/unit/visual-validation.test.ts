@@ -103,7 +103,7 @@ describe('copy validation', () => {
     expect(report.ok).toBe(false);
   });
 
-  it('warns (not blocks) when a cta has no follow reason and DEFAULT_CTA is empty', () => {
+  it('warns (not blocks) when a cta has no send/save ask and DEFAULT_CTA is empty', () => {
     const slides = post.slides.map((s, i) =>
       i === post.slides.length - 1
         ? { type: 'cta' as const, headline: 'Want more?', body: '', kicker: '' }
@@ -141,6 +141,33 @@ describe('copy validation', () => {
     );
     const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
     expect(report.issues.some((i) => i.code === 'GENERIC_PHRASE' && i.slide === 1)).toBe(true);
+  });
+
+  it('BLOCKS the newer aggregator-tell phrases on the cover', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'GPT-6: what you need to know' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const hit = report.issues.find((i) => i.code === 'GENERIC_PHRASE' && i.slide === 1);
+    expect(hit?.severity).toBe('error');
+    expect(report.ok).toBe(false);
+  });
+
+  it('warns on a rhetorical-question hook', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'Ever wondered how Claude *agents* work?' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    const hit = report.issues.find((i) => i.code === 'HOOK_RHETORICAL');
+    expect(hit?.severity).toBe('warning');
+  });
+
+  it('does not flag a declarative hook as rhetorical', () => {
+    const slides = post.slides.map((s, i) =>
+      i === 0 ? { ...s, headline: 'Claude Code just got *parallel subagents*' } : s,
+    );
+    const report = validatePostCopy(PostSchema.parse({ ...post, slides }), settings);
+    expect(report.issues.some((i) => i.code === 'HOOK_RHETORICAL')).toBe(false);
   });
 
   it('warns when the cover headline has no number, subject, or tension word', () => {

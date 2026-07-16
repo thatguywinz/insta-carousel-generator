@@ -56,6 +56,17 @@ const GENERIC_AI_PHRASES = [
   'stop scrolling',
   'elevate your',
   'stay tuned',
+  'what you need to know',
+  'this is huge',
+  'this changes everything',
+  'the ai landscape',
+  "let's break it down",
+  'cutting-edge',
+  'cutting edge',
+  'revolutionary',
+  'groundbreaking',
+  'rapidly evolving',
+  'leverage',
 ];
 
 /** Normalize curly quotes so phrase matching catches typographic apostrophes. */
@@ -78,6 +89,10 @@ const HOOK_SUBJECT =
   /\b(claude|anthropic|gpt-?\d*|chatgpt|openai|codex|gemini|deepmind|grok|xai|llama|meta|mistral|copilot|cursor|windsurf|sora|deepseek|qwen|ai)\b/i;
 const HOOK_TENSION =
   /\b(just|new|stop|wrong|nobody|everyone|secret|mistake|why|how|vs|versus|before|after|changed?|changes|killed?|kills|beats?|beaten|free|broke|breaking|leaked?|drops?|dropped|ships?|shipped|inside|truth|actually|real|not|never|always|now|don'?t|won'?t|this)\b/i;
+
+/** Rhetorical-question openers read as filler and carry no claim. */
+const RHETORICAL_HOOK =
+  /^(ever\s+wonder(ed)?|have\s+you\s+ever|did\s+you\s+know|do\s+you\s+(ever|want|know)|what\s+if\s+i\s+told\s+you|are\s+you\s+(still|ready|tired))\b/i;
 
 /** Instagram shows roughly this many caption chars before truncating with "…more". */
 const CAPTION_FOLD_CHARS = 125;
@@ -118,11 +133,11 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
     issues.push({
       slide: post.slides.length,
       code: 'NO_CLOSER',
-      message: 'last slide must be a summary or cta that closes the value + earns the follow',
+      message: 'last slide must be a summary or cta that closes the value + earns the send',
       severity: 'error',
     });
   }
-  // A cta closer needs a value reason to follow: either the slide carries it or
+  // A cta closer needs a send/save ask: either the slide carries it or
   // DEFAULT_CTA supplies it at render. Warn (don't block) when neither exists.
   if (last && last.type === 'cta') {
     const ctaCopy = `${last.body ?? ''} ${last.kicker ?? ''}`.trim();
@@ -130,7 +145,7 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
       issues.push({
         slide: post.slides.length,
         code: 'CTA_WEAK',
-        message: 'cta has no follow reason — write a cta body or set DEFAULT_CTA in the Sheet',
+        message: 'cta has no send/save ask — write a cta body or set DEFAULT_CTA in the Sheet',
         severity: 'warning',
       });
     }
@@ -241,6 +256,20 @@ export function validatePostCopy(post: Post, settings: Settings): ValidationRepo
       code: 'HOOK_WEAK',
       message:
         'cover headline has no number, named tool, or tension word — consider a stronger hook',
+      severity: 'warning',
+    });
+  }
+
+  // Rhetorical-question hooks ("Ever wondered…?") never carry the claim or
+  // consequence a scroll-stopper needs. Warning only — judgment stays human.
+  if (
+    post.slides[0]?.type === 'cover' &&
+    RHETORICAL_HOOK.test(normalizeQuotes(coverHeadline).trim())
+  ) {
+    issues.push({
+      slide: 1,
+      code: 'HOOK_RHETORICAL',
+      message: 'cover hook opens as a rhetorical question — state the claim or consequence instead',
       severity: 'warning',
     });
   }
