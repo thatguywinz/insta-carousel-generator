@@ -496,6 +496,12 @@ const BASE_CSS = `
     color: color-mix(in srgb, var(--c-text) 7%, transparent); }
   .body { font-size: 38px; line-height: 1.4; color: var(--c-text);
     font-weight: 450; }
+  /* Myth/Reality and Mistake/Do-this labels. Base sizing so these slide types
+     stay legible under ANY template — template CSS layers color on top. Without
+     this, a myth-reality/mistake-solution slide rendered under a non-matching
+     template falls back to the 16px default and fails the min-font gate. */
+  .tag { display: inline-block; font-size: 28px; font-weight: 800;
+    letter-spacing: 2px; text-transform: uppercase; }
   .muted { color: var(--c-muted); }
   .content { flex: 1; display: flex; flex-direction: column;
     justify-content: center; gap: 32px; }
