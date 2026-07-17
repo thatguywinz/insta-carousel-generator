@@ -22,6 +22,7 @@
  */
 
 export const ART_DIRECTIONS = [
+  'signal',
   'editorial',
   'brutalist',
   'spotlight',
@@ -30,6 +31,15 @@ export const ART_DIRECTIONS = [
   'poster',
 ] as const;
 export type ArtDirectionName = (typeof ART_DIRECTIONS)[number];
+
+/**
+ * SIGNAL is the flagship look and renders on its own dedicated path
+ * (`src/signal.ts`) — a generative figure + Geist + flowing motion — so it does
+ * not express itself through the `.decor-1/2/3` css/motion the six legacy
+ * directions use. The registry entry is a marker: render.ts branches on the
+ * name before it ever reads `css`/`motionCss`.
+ */
+export const SIGNAL_DIRECTION = 'signal';
 
 export interface ResolvedArtDirection {
   name: ArtDirectionName;
@@ -440,7 +450,13 @@ function poster(): ResolvedArtDirection {
   };
 }
 
+/** Marker entry — SIGNAL renders on its own path; no decor css/motion here. */
+function signal(): ResolvedArtDirection {
+  return { name: 'signal', css: '', motionCss: '' };
+}
+
 const REGISTRY: Record<ArtDirectionName, () => ResolvedArtDirection> = {
+  signal,
   editorial,
   brutalist,
   spotlight,
@@ -468,12 +484,23 @@ function hashStr(s: string): number {
   return h >>> 0;
 }
 
+/** Deterministic per-idea rotation across the six legacy directions (SIGNAL
+ *  excluded — it is the pinned flagship, not part of the shuffle). Reachable via
+ *  the `rotate` / `legacy` pin for accounts that still want a varied feed. */
+function legacyRotation(post: { idea_id?: string; idea?: string }): ResolvedArtDirection {
+  const legacy = ART_DIRECTIONS.filter((n) => n !== 'signal');
+  const seed = post.idea_id || post.idea || 'seed';
+  const idx = hashStr(seed) % legacy.length;
+  return artDirection(legacy[idx]!);
+}
+
 /**
  * Choose the art direction for a post. Precedence:
  *  1. an explicit `post.art_direction` (author's deliberate choice),
- *  2. a pinned `ART_DIRECTION` setting (a specific style name),
- *  3. `auto`/blank → a deterministic pick seeded by `idea_id` so every idea
- *     gets a stable-but-varied style with no external state.
+ *  2. a pinned `ART_DIRECTION` setting (a specific style name, or
+ *     `rotate`/`legacy` for the per-idea shuffle across the six older styles),
+ *  3. `auto`/blank/anything else → SIGNAL, the flagship look every live carousel
+ *     uses by default.
  */
 export function resolveArtDirection(
   post: { idea_id?: string; idea?: string; art_direction?: string },
@@ -484,7 +511,6 @@ export function resolveArtDirection(
   }
   const pin = (setting ?? 'auto').trim().toLowerCase();
   if (isArtDirectionName(pin)) return artDirection(pin);
-  const seed = post.idea_id || post.idea || 'seed';
-  const idx = hashStr(seed) % ART_DIRECTIONS.length;
-  return artDirection(ART_DIRECTIONS[idx]!);
+  if (pin === 'rotate' || pin === 'legacy') return legacyRotation(post);
+  return artDirection('signal');
 }

@@ -14,5 +14,6 @@ embedded as `data:` URIs at render time so rendering is fully offline/CSP-safe.
 | `SpaceMono-400/700.woff2`    | Space Mono    | © Colophon Foundry — Google Fonts `ofl/spacemono`                          |
 | `Anton-400.woff2`            | Anton         | © The Anton Project Authors — Google Fonts `ofl/anton`                     |
 | `ArchivoBlack-400.woff2`     | Archivo Black | © Omnibus-Type — Google Fonts `ofl/archivoblack`                           |
+| `Geist-500/600/700/800.woff2`| Geist         | © 2023 Vercel — https://github.com/vercel/geist-font (OFL 1.1)             |
 
 Full OFL text: https://openfontlicense.org

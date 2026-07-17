@@ -15,6 +15,7 @@ import {
   MOTION_KEYFRAMES,
   BASELINE_MOTION_CSS,
 } from './art-direction.js';
+import { buildSignalHtml, SIGNAL_FILLFIT_FN } from './signal.js';
 
 /**
  * Deterministic HTML/CSS → 1080×1350 image renderer. Templates provide a
@@ -742,8 +743,9 @@ const MEASURE_FN = `(() => {
   for (const el of all) {
     if (SKIP[el.tagName]) continue;
     // Decorative shapes intentionally bleed past the canvas and are clipped
-    // by the .decor-layer; they carry no text and are not layout overflow.
-    if (el.closest('.decor-layer')) continue;
+    // by the .decor-layer / SIGNAL .fig; they carry no layout text and are not
+    // overflow (SIGNAL's generative figure is measured out by design).
+    if (el.closest('.decor-layer') || el.closest('.fig')) continue;
     const cs = getComputedStyle(el);
     const fs = parseFloat(cs.fontSize);
     const hasText = el.textContent && el.textContent.trim().length > 0;
@@ -829,14 +831,20 @@ export async function renderPost(
       deviceScaleFactor: 1,
     });
     const total = post.slides.length;
+    const isSignal = art.name === 'signal';
     for (let i = 0; i < post.slides.length; i++) {
       const slide = post.slides[i]!;
       const animate = animateFlags[i]!;
-      const html = buildSlideHtml(slide, i + 1, total, brand, templateCss, theme, animate, art);
+      // SIGNAL (the flagship look) renders on its own path: a generative figure,
+      // Geist type and flowing motion, with a two-way fill-fit. Everything else
+      // uses the generic template/art-direction path + shrink-only autofit.
+      const html = isSignal
+        ? buildSignalHtml(slide, i + 1, total, brand, { animate, theme })
+        : buildSlideHtml(slide, i + 1, total, brand, templateCss, theme, animate, art);
       const page: Page = await context.newPage();
       await page.setViewportSize(clip);
       await page.setContent(html, { waitUntil: 'networkidle' });
-      await page.evaluate(AUTOFIT_FN);
+      await page.evaluate(isSignal ? SIGNAL_FILLFIT_FN : AUTOFIT_FN);
 
       if (animate) {
         // Measure and capture from the settled t=0 frame.

@@ -29,10 +29,27 @@ const brand: Brand = {
 
 const cover: Slide = { type: 'cover', headline: 'Hook', body: 'Sub', kicker: 'K' };
 
+// The six older styles that render through the generic decor/motion path.
+// SIGNAL is the flagship and renders on its own path (src/signal.ts), so it
+// carries no `.ad-*` decor css/motion here.
+const LEGACY = ART_DIRECTIONS.filter((n) => n !== 'signal');
+
 describe('art-direction registry', () => {
-  it('exposes six styles, each with scoped css + motion', () => {
-    expect(ART_DIRECTIONS.length).toBe(6);
-    for (const name of ART_DIRECTIONS) {
+  it('lists signal (the flagship) plus six legacy styles', () => {
+    expect(ART_DIRECTIONS.length).toBe(7);
+    expect(ART_DIRECTIONS).toContain('signal');
+    expect(LEGACY.length).toBe(6);
+  });
+
+  it('signal is a marker entry — it renders on its own path, no decor css/motion', () => {
+    const sig = artDirection('signal');
+    expect(sig.name).toBe('signal');
+    expect(sig.css).toBe('');
+    expect(sig.motionCss).toBe('');
+  });
+
+  it('each legacy style has scoped css + motion', () => {
+    for (const name of LEGACY) {
       const ad = artDirection(name);
       expect(ad.name).toBe(name);
       expect(ad.css).toContain(`.ad-${name}`);
@@ -41,17 +58,17 @@ describe('art-direction registry', () => {
     }
   });
 
-  it('every direction animates the cover underline (settled-at-t0 draw)', () => {
+  it('every legacy direction animates the cover underline (settled-at-t0 draw)', () => {
     expect(MOTION_KEYFRAMES).toContain('ad-underline');
     // The draw must rest at full width so frame 0 is a complete poster.
     expect(MOTION_KEYFRAMES).toMatch(/ad-underline \{ 0%,100%\{transform:scaleX\(1\)\}/);
-    for (const name of ART_DIRECTIONS) {
+    for (const name of LEGACY) {
       expect(artDirection(name).motionCss).toContain('ad-underline');
     }
   });
 
-  it('every direction upsizes sparse interior slides so points never float in a void', () => {
-    for (const name of ART_DIRECTIONS) {
+  it('every legacy direction upsizes sparse interior slides so points never float in a void', () => {
+    for (const name of LEGACY) {
       const css = artDirection(name).css;
       expect(css).toContain(`.ad-${name}.slide-numbered-point .content`);
       expect(css).toContain('gap: 44px');
@@ -70,13 +87,18 @@ describe('resolveArtDirection precedence', () => {
     expect(resolveArtDirection({ idea_id: 'x' }, 'blueprint').name).toBe('blueprint');
   });
 
-  it('auto/blank/unknown falls back to a deterministic per-idea pick', () => {
-    const a = resolveArtDirection({ idea_id: 'idea-42' }, 'auto').name;
-    const b = resolveArtDirection({ idea_id: 'idea-42' }, 'auto').name;
+  it('auto/blank/unknown defaults to signal, the flagship look', () => {
+    expect(resolveArtDirection({ idea_id: 'idea-42' }, 'auto').name).toBe('signal');
+    expect(resolveArtDirection({ idea_id: 'x' }, '').name).toBe('signal');
+    // unknown setting is treated as the default, not an error
+    expect(resolveArtDirection({ idea_id: 'z' }, 'nonsense').name).toBe('signal');
+  });
+
+  it('ART_DIRECTION=rotate shuffles the six legacy styles deterministically', () => {
+    const a = resolveArtDirection({ idea_id: 'idea-42' }, 'rotate').name;
+    const b = resolveArtDirection({ idea_id: 'idea-42' }, 'rotate').name;
     expect(a).toBe(b); // stable per idea
-    expect(ART_DIRECTIONS).toContain(a);
-    // unknown setting is treated as auto, not an error
-    expect(ART_DIRECTIONS).toContain(resolveArtDirection({ idea_id: 'z' }, 'nonsense').name);
+    expect(LEGACY).toContain(a); // never signal
   });
 });
 

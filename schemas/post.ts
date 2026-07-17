@@ -67,6 +67,7 @@ export type ThemeName = z.infer<typeof ThemeNameSchema>;
  * When absent the renderer rotates it deterministically per idea.
  */
 export const ArtDirectionSchema = z.enum([
+  'signal',
   'editorial',
   'brutalist',
   'spotlight',
@@ -75,6 +76,16 @@ export const ArtDirectionSchema = z.enum([
   'poster',
 ]);
 export type ArtDirection = z.infer<typeof ArtDirectionSchema>;
+
+/**
+ * SIGNAL figure vocabulary — the generative diagram that carries a slide's
+ * argument (only used by the `signal` art direction). Explicit per slide, or
+ * inferred from the slide type + copy when omitted.
+ *   fan   one -> many (parallelism)   merge many -> one (coordination cost)
+ *   lanes parallel, independent       steps a rising method   field quiet beat
+ */
+export const FigureKindSchema = z.enum(['fan', 'merge', 'lanes', 'steps', 'field', 'auto']);
+export type FigureKind = z.infer<typeof FigureKindSchema>;
 
 /** A single slide. Fields are optional per slide type; renderer reads what it needs. */
 export const SlideSchema = z
@@ -99,8 +110,16 @@ export const SlideSchema = z
     pointsB: z.array(z.string().max(160)).max(6).optional(),
     /** checklist slide. */
     items: z.array(z.string().max(160)).max(8).optional(),
-    /** small eyebrow/kicker text. */
+    /** small eyebrow/kicker text. Under `signal` this is the mono section label
+     *  (e.g. "The Cost", "The Move"). */
     kicker: z.string().max(60).optional(),
+    /** SIGNAL only: the generative figure carrying this slide's argument.
+     *  Omit (or "auto") to infer from slide type + copy. */
+    figure: FigureKindSchema.optional(),
+    /** SIGNAL only: strand/step count for the figure (fan/merge/lanes/steps). */
+    figure_n: z.number().int().min(2).max(8).optional(),
+    /** SIGNAL only: mono caption strip under the body (e.g. "Six lanes · no crossing"). */
+    caption: z.string().max(90).optional(),
     /**
      * Motion override. When true this slide renders as an animated MP4 (a "moving"
      * carousel item); when false it stays a static image. When omitted, the

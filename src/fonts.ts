@@ -16,6 +16,7 @@ import { log } from './logger.js';
  *   --font-mono      Space Mono     (raw technical / brutalist)
  *   --font-condensed Anton          (ultra-heavy condensed display — kinetic)
  *   --font-black     Archivo Black  (ultra-heavy wide display — poster)
+ *   --font-signal    Geist          (modern neo-grotesque — the SIGNAL default look)
  */
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -41,6 +42,10 @@ const FACES: FaceSpec[] = [
   { family: 'Space Mono', weight: 700, style: 'normal', file: 'SpaceMono-700.woff2' },
   { family: 'Anton', weight: 400, style: 'normal', file: 'Anton-400.woff2' },
   { family: 'Archivo Black', weight: 400, style: 'normal', file: 'ArchivoBlack-400.woff2' },
+  { family: 'Geist', weight: 500, style: 'normal', file: 'Geist-500.woff2' },
+  { family: 'Geist', weight: 600, style: 'normal', file: 'Geist-600.woff2' },
+  { family: 'Geist', weight: 700, style: 'normal', file: 'Geist-700.woff2' },
+  { family: 'Geist', weight: 800, style: 'normal', file: 'Geist-800.woff2' },
 ];
 
 let cachedCss: string | null = null;
@@ -78,6 +83,7 @@ export function fontFaceCss(): string {
     `--font-mono:'Space Mono','SFMono-Regular',Menlo,Consolas,monospace;` +
     `--font-condensed:'Anton','Arial Narrow',sans-serif;` +
     `--font-black:'Archivo Black','Arial Black',sans-serif;` +
+    `--font-signal:'Geist','Inter',-apple-system,'Segoe UI',sans-serif;` +
     `}`;
   cachedCss = blocks.join('\n') + '\n' + vars;
   return cachedCss;

@@ -346,34 +346,47 @@ people, so the ask is a **send or a save — never a follow**.
 - **`template`** = content _layout only_. `numbered-list`, `step-by-step`,
   `myth-reality`, `mistake-solution`, `comparison`, `checklist`, `breaking-news`.
   Pick the one that fits the content shape.
-- **`art_direction`** = the _style_ (typography + background treatment + decor +
-  motion personality), owned by `src/art-direction.ts`. Six distinct, deliberately
-  artistic, non-rainbow systems — each also styles the `*accent*` word, a ghost
-  sequence numeral on sparse interiors, and a designed CTA end-card:
-  - `editorial` — Fraunces-900 magazine front page: masthead row, hairlines,
-    italic accent word, vertical spine label, grain; CTA inverts to an ink card.
-  - `brutalist` — mono type, hard grid, square blocks, `/// LIVE FEED` strip,
-    bracket labels (how-tos); CTA is a primary-filled slab card.
-  - `spotlight` — dark cinematic stage: twin conic beams + breathing glow,
-    centered oversized type; CTA is a glowing finale card.
-  - `kinetic` — Anton condensed uppercase filling the whole frame (the type IS
-    the art); CTA is a primary-filled Anton card.
-  - `blueprint` — technical graph grid, corner ticks, `FIG.` annotations, ruler
-    underline on the accent word; CTA is a dashed-frame spec card.
-  - `poster` — full-bleed primary color field + Archivo Black knockout type +
-    solid accent geometry (maximum ink in the feed); CTA bookends the same field.
-    Leave it unset to let the `ART_DIRECTION` Setting rotate it (default `auto`,
-    seeded per idea). **Set it deliberately and vary it from recent posts** so every
-    post looks like a different designed piece. Match the style to the content
-    (kinetic → punchy hooks; brutalist/blueprint → technical how-tos; editorial →
-    explainers; spotlight/poster → launches). `brutalist` (mono) and `poster`
-    (ultra-wide Archivo Black) need short hooks (≤ ~6 words); `kinetic` (condensed
-    Anton) stacks up to ~8 words. Auto-fit protects the whole layout (headline,
-    deck AND footer) down to the 56px floor — if it floors, shorten the copy.
-- Visual inspection must **reject bland output**: every slide must show the art
-  direction's background treatment + a graphic accent, real display typography (not
-  a plain system sans), and the cover must carry the theme's logo mark and a
-  scroll-stopping hook — it should look like a piece of art.
+- **`art_direction`** = the _style_. The default and flagship look is **`signal`**
+  (`src/signal.ts`); leave `art_direction` unset and `ART_DIRECTION=auto` (or blank)
+  and every live carousel renders as SIGNAL. The six older styles in
+  `src/art-direction.ts` (`editorial`, `brutalist`, `spotlight`, `kinetic`,
+  `blueprint`, `poster`) are still there — pin one explicitly, or set
+  `ART_DIRECTION=rotate` to shuffle them per idea — but SIGNAL is what ships.
+
+  **SIGNAL — the house style.** A near-black material field, **Geist** (modern
+  neo-grotesque) display type with a **gold accent word**, mono furniture (masthead
+  label + caption strip + footer lockup), film grain, and — the originality engine —
+  a **generative figure drawn from the post's own argument** that evolves across the
+  deck. The figure is deterministic (no API) and cannot be copied without having the
+  same idea. The figure vocabulary:
+  - `fan` — one → many. Parallelism, a launch, a topic breaking into points. (covers)
+  - `merge` — many → one. Coordination cost, consolidation, "the tax".
+  - `lanes` — parallel, never touching. Independence, separation. (good closers)
+  - `steps` — a rising stair. A method, stages, compounding. (the value lane)
+  - `field` — ghost field only, no hero. A quiet beat, or list/comparison layouts.
+
+  **Authoring for SIGNAL:**
+  - Set `slide.figure` to the shape that _is_ the argument (`fan`/`merge`/`lanes`/
+    `steps`/`field`), or omit it and the renderer infers from the slide type + copy.
+    Make the deck a visual argument: e.g. `fan` (cover) → `merge` (the cost) →
+    `lanes` (the test) → `steps` (the method) → `lanes` (send). Use `figure_n` to
+    set strand/step count (default 6, steps 4).
+  - `slide.kicker` is the mono **section label** top-right ("The Cost", "The Move").
+  - `slide.caption` is the mono **strip under the body** ("Six lanes · no crossing").
+    Keep it a measured, three-beat line — it is what makes the figure read as
+    _measured_, not decorated.
+  - Mark the ONE payoff word with `*asterisks*` — it renders as the gold accent.
+  - **One idea per slide.** SIGNAL sings on single-idea types (`cover`,
+    `standard-content`, `numbered-point`, `step`, `cta`). `checklist`, `comparison`,
+    `myth-reality`, `mistake-solution` render cleanly on the dark field but drop the
+    hero figure — prefer the single-idea shape and let the figure carry the deck.
+  - Fill-fit both grows short copy and shrinks long copy to fill the frame (floor
+    28px). If a headline floors, shorten it — do not accept tiny type.
+
+- Visual inspection must **reject bland output**: every slide must show the SIGNAL
+  field + its generative figure, real Geist display type (never a plain system
+  sans), the gold accent word on the cover, and a scroll-stopping hook — it should
+  look like a piece of art.
 
 ### Motion (moving carousels)
 
